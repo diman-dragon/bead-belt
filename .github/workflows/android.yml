@@ -1,0 +1,79 @@
+name: Android
+
+# Режим разработки: ничего никуда не публикуется. Результат — APK в артефактах запуска.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Проверки (уровни, симуляция, версия)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+
+  apk:
+    name: APK (общий ключ разработки)
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Установка зависимостей
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Android SDK 36
+        continue-on-error: true   # если не вышло, Gradle докачает платформу сам
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Создать и пропатчить Android-проект
+        run: npm run android:init
+      - name: Проверки Android
+        run: npm run check:android
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+      - name: Сборка debug и release APK
+        working-directory: android
+        run: ./gradlew assembleDebug assembleRelease --no-daemon
+      - name: Собрать файлы с версией в имени
+        id: ver
+        run: |
+          V=$(node -p "require('./package.json').version")
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/*.apk   "dist/bead-belt-$V-debug.apk"
+          cp android/app/build/outputs/apk/release/*.apk "dist/bead-belt-$V-release.apk"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+      - name: Подпись одним и тем же ключом?
+        run: |
+          for f in dist/*.apk; do
+            echo "$f"; "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$f" | grep -m1 "SHA-256" || true
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bead-belt-${{ steps.ver.outputs.version }}
+          path: dist/*.apk
+          if-no-files-found: error

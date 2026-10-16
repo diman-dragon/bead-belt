@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>Bead Belt</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="hud">
+      <button id="btnPause" class="icon-btn" aria-label="Pause">
+        <svg viewBox="0 0 24 24" width="22" height="22"><rect x="6" y="5" width="4" height="14" rx="1.5" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1.5" fill="currentColor"/></svg>
+      </button>
+      <div id="levelLabel">Level 1</div>
+      <div class="hud-right">
+        <button id="btnSound" class="icon-btn" aria-label="Sound">
+          <svg id="icoSoundOn" viewBox="0 0 24 24" width="22" height="22"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 010 7M18.5 6a8.5 8.5 0 010 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <svg id="icoSoundOff" viewBox="0 0 24 24" width="22" height="22" hidden><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <button id="btnRestart" class="icon-btn" aria-label="Restart">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M17.65 6.35A8 8 0 104 12h2a6 6 0 116 6 5.9 5.9 0 01-4.24-1.76L10 14H4v6l2.35-2.35A8 8 0 1017.65 6.35z" fill="currentColor"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main id="stage">
+      <canvas id="cv"></canvas>
+      <div id="hint" hidden></div>
+    </main>
+
+    <section id="screenMenu" class="overlay">
+      <div class="card">
+        <div class="logo" aria-hidden="true">
+          <i style="--c:#ef4444"></i><i style="--c:#facc15"></i><i style="--c:#22c55e"></i><i style="--c:#3b82f6"></i>
+        </div>
+        <h1>Bead Belt</h1>
+        <p id="menuSub"></p>
+        <button id="btnPlay" class="btn primary"></button>
+        <div id="ver" class="ver"></div>
+      </div>
+    </section>
+
+    <section id="screenPause" class="overlay" hidden>
+      <div class="card">
+        <h2 id="pauseTitle"></h2>
+        <button id="btnResume" class="btn primary"></button>
+        <button id="btnPauseRestart" class="btn"></button>
+        <button id="btnMenu" class="btn"></button>
+      </div>
+    </section>
+
+    <section id="screenEnd" class="overlay" hidden>
+      <div class="card">
+        <h2 id="endTitle"></h2>
+        <p id="endText"></p>
+        <button id="btnNext" class="btn primary"></button>
+        <button id="btnRetry" class="btn"></button>
+        <button id="btnEndMenu" class="btn"></button>
+      </div>
+    </section>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

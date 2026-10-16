@@ -1,0 +1,14 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "Игра в браузере (localhost:5173)", "type": "shell", "command": "npm run dev", "isBackground": true,
+      "problemMatcher": [], "group": "build" },
+    { "label": "Проверить уровни", "type": "shell", "command": "npm run validate", "problemMatcher": [], "group": "test" },
+    { "label": "Симуляция (боты)", "type": "shell", "command": "npm run simulate", "problemMatcher": [], "group": "test" },
+    { "label": "Все проверки", "type": "shell", "command": "npm test", "problemMatcher": [], "group": { "kind": "test", "isDefault": true } },
+    { "label": "Android: создать/обновить проект", "type": "shell", "command": "npm run android:init", "problemMatcher": [] },
+    { "label": "Android: синхронизировать www", "type": "shell", "command": "npm run android:sync", "problemMatcher": [] },
+    { "label": "Android: открыть в Android Studio", "type": "shell", "command": "npm run android:open", "problemMatcher": [] },
+    { "label": "Сгенерировать иконки и графику", "type": "shell", "command": "python3 tools/make-assets.py", "problemMatcher": [] }
+  ]
+}

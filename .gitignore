@@ -1,0 +1,22 @@
+node_modules/
+.DS_Store
+*.log
+
+# Ключи: общий публичный ключ разработки лежит в репозитории намеренно.
+# Любые другие ключи (для Google Play) не коммитить.
+*.keystore
+*.jks
+!signing/dev.keystore
+keystore.b64
+play-service-account*.json
+local.properties
+
+# Сборочные артефакты Android (сама папка android/ — на ваше усмотрение: можно коммитить или генерировать в CI)
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/app/src/main/res/xml/config.xml
