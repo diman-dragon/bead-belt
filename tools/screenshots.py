@@ -24,28 +24,28 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 
 with sync_playwright() as p:
     b = p.chromium.launch()
-    ctx = b.new_context(viewport={"width": 360, "height": 720}, device_scale_factor=3, has_touch=True,
+    ctx = b.new_context(viewport={"width": 360, "height": 760}, device_scale_factor=3, has_touch=True,
                         locale="ru-RU" if LANG == "ru" else "en-US")
     page = ctx.new_page()
     page.goto(f"http://127.0.0.1:{port}/index.html")
     page.wait_for_timeout(500)
     page.click("#btnPlay")
-    page.wait_for_timeout(400)
+    page.wait_for_timeout(1500)
     geo = page.evaluate("() => { const r=document.getElementById('cv').getBoundingClientRect(); return {l:r.left,t:r.top,w:r.width,h:r.height}; }")
     k = min(geo["w"] / 360, geo["h"] / 600)
     ox, oy = (geo["w"] - 360 * k) / 2, (geo["h"] - 600 * k) / 2
 
     def tap(ci):
-        cx = [60, 180, 300][ci]
-        page.mouse.click(geo["l"] + ox + cx * k, geo["t"] + oy + (98 + 43) * k)
+        cx = [62, 180, 298][ci]
+        page.mouse.click(geo["l"] + ox + cx * k, geo["t"] + oy + (54 + 43) * k)
 
     page.screenshot(path=os.path.join(OUT, "1-start.png"))
     tap(0)
-    page.wait_for_timeout(2200)
-    page.screenshot(path=os.path.join(OUT, "2-playing.png"))
-    page.wait_for_timeout(5000)
+    page.wait_for_timeout(900)
     tap(1)
-    page.wait_for_timeout(2800)
+    page.wait_for_timeout(1500)
+    page.screenshot(path=os.path.join(OUT, "2-pouring.png"))
+    page.wait_for_timeout(3500)
     page.screenshot(path=os.path.join(OUT, "3-belt-busy.png"))
     b.close()
 srv.shutdown()

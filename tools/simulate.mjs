@@ -6,12 +6,14 @@ import { solve } from '../www/js/solver.js';
 import { Game } from '../www/js/game.js';
 import * as G from '../www/js/geometry.js';
 
-const DT = 1 / 60;
-const MAX_SECONDS = 180;
+const DT = 1 / 30;
+const MAX_SECONDS = 240;
 
+// «Успокоилось»: всё высыпано, накопитель пуст, ничего не летит и ни одна коробка не может ничего взять.
 function settled(g) {
-  return g.emitters.length === 0 && g.pending === 0 &&
-    !g.flyers.length && !g.canTake() && !g.boxes.some((b) => b && b.done);
+  return g.emitters.length === 0 && g.bin.count === 0 && !g.flyers.length && !g.canTake() &&
+    !g.slots.some((m) => m && m.drop > 0) &&
+    !g.boxes.some((b) => b && (b.done || b.enterT < 0.4));
 }
 
 function tapColumn(g, ci) {
@@ -48,12 +50,12 @@ for (const level of LEVELS) {
   if (!ok) failed = true;
 
   let wins = 0, losses = 0, stalls = 0;
-  const N = 300;
+  const N = 60;
   let seed = 12345;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   for (let k = 0; k < N; k++) {
     const r = run(level, (g) => {
-      const avail = g.cols.map((c, i) => (c[0] && !c[0].emitting ? i : -1)).filter((i) => i >= 0);
+      const avail = g.cols.map((c, i) => (c[0] && c[0].state === 'idle' && g.colAdv[i] < 0.5 ? i : -1)).filter((i) => i >= 0);
       return avail.length ? avail[Math.floor(rnd() * avail.length)] : null;
     });
     if (r.state === 'won') wins++; else if (r.state === 'lost') losses++; else stalls++;

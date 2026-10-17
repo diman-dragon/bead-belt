@@ -4,9 +4,12 @@
 // помещаются на конвейер (занято + n <= belt). Шарики на конвейере считаются «мешком»:
 // за один оборот каждый проезжает мимо каждой активной коробки, поэтому подходящие
 // шарики сразу уходят в коробки (settle). Если модель говорит «проходим», игрок
-// гарантированно может пройти уровень. Реальная игра чуть мягче модели.
+// гарантированно может пройти уровень. Реальная игра чуть мягче модели (есть ещё накопитель).
+//
+// Коробки лежат в 4 стопках (см. boxStacks): когда верхняя коробка стопки заполнена,
+// на её место встаёт следующая из ТОЙ ЖЕ стопки.
 
-import { BOX_SIZE, ACTIVE_BOXES } from './levels.js';
+import { BOX_SIZE, boxStacks } from './levels.js';
 
 export function checkLevelData(level) {
   const errors = [];
@@ -28,12 +31,12 @@ export function checkLevelData(level) {
   return errors;
 }
 
-function initialState(level) {
+function initialState(level, stacks) {
   return {
     belt: {},           // цвет -> количество шариков на конвейере
     beltCount: 0,
-    active: level.boxes.slice(0, ACTIVE_BOXES).map((c) => ({ c, f: 0 })),
-    q: ACTIVE_BOXES,    // индекс следующей коробки в очереди
+    active: stacks.map((s) => (s.length ? { c: s[0], f: 0 } : null)),
+    qi: stacks.map(() => 1),           // индекс следующей коробки в каждой стопке
     heads: level.columns.map(() => 0), // сколько лотков уже взято из каждой колонки
   };
 }
@@ -42,18 +45,19 @@ function clone(s) {
   return {
     belt: { ...s.belt },
     beltCount: s.beltCount,
-    active: s.active.map((b) => ({ ...b })),
-    q: s.q,
+    active: s.active.map((b) => (b ? { ...b } : null)),
+    qi: s.qi.slice(),
     heads: s.heads.slice(),
   };
 }
 
-function settle(s, level) {
+function settle(s, stacks) {
   let changed = true;
   while (changed) {
     changed = false;
     for (let i = 0; i < s.active.length; i++) {
       const b = s.active[i];
+      if (!b) continue;
       const have = s.belt[b.c] || 0;
       if (have > 0 && b.f < BOX_SIZE) {
         const take = Math.min(BOX_SIZE - b.f, have);
@@ -63,8 +67,7 @@ function settle(s, level) {
         changed = true;
       }
       if (b.f >= BOX_SIZE) {
-        if (s.q < level.boxes.length) s.active[i] = { c: level.boxes[s.q++], f: 0 };
-        else { s.active.splice(i, 1); i--; }
+        s.active[i] = s.qi[i] < stacks[i].length ? { c: stacks[i][s.qi[i]++], f: 0 } : null;
         changed = true;
       }
     }
@@ -73,12 +76,12 @@ function settle(s, level) {
 
 function key(s) {
   const belt = Object.keys(s.belt).sort().map((c) => c + s.belt[c]).join('');
-  const act = s.active.map((b) => b.c + b.f).join(',');
-  return `${belt}|${act}|${s.q}|${s.heads.join(',')}`;
+  const act = s.active.map((b) => (b ? b.c + b.f : '-')).join(',');
+  return `${belt}|${act}|${s.qi.join('')}|${s.heads.join(',')}`;
 }
 
 function isWin(s, level) {
-  return s.active.length === 0 && s.q >= level.boxes.length &&
+  return s.active.every((b) => !b) &&
     s.heads.every((h, i) => h >= level.columns[i].length);
 }
 
@@ -93,19 +96,26 @@ function moves(s, level) {
   return out;
 }
 
-function apply(s, level, col) {
+function apply(s, level, stacks, col) {
   const n = clone(s);
   const t = level.columns[col][n.heads[col]];
   n.heads[col]++;
   n.belt[t.c] = (n.belt[t.c] || 0) + t.n;
   n.beltCount += t.n;
-  settle(n, level);
+  settle(n, stacks);
   return n;
+}
+
+function startState(level, stacks) {
+  const s0 = initialState(level, stacks);
+  settle(s0, stacks);
+  return s0;
 }
 
 // Полный перебор с запоминанием состояний. Возвращает решение (порядок колонок) или null.
 export function solve(level, beltOverride) {
   const lv = beltOverride ? { ...level, belt: beltOverride } : level;
+  const stacks = boxStacks(lv);
   const seen = new Map();
   let visited = 0;
   function dfs(s) {
@@ -115,37 +125,32 @@ export function solve(level, beltOverride) {
     visited++;
     seen.set(k, null);
     for (const m of moves(s, lv)) {
-      const r = dfs(apply(s, lv, m));
+      const r = dfs(apply(s, lv, stacks, m));
       if (r) { const sol = [m, ...r]; seen.set(k, sol); return sol; }
     }
     return null;
   }
-  const s0 = initialState(lv);
-  settle(s0, lv);
-  const solution = dfs(s0);
+  const solution = dfs(startState(lv, stacks));
   return { solution, visited };
 }
 
-// Доля первых ходов, ведущих к победе, — грубая мера «лёгкости» уровня.
+// Сколько из первых ходов ведут к победе — грубая мера «лёгкости» уровня.
 export function firstMoveStats(level) {
-  const s0 = initialState(level);
-  settle(s0, level);
+  const stacks = boxStacks(level);
+  const s0 = startState(level, stacks);
   const first = moves(s0, level);
   let winning = 0;
   for (const m of first) {
-    const s1 = apply(s0, level, m);
-    const lv = { ...level, columns: level.columns };
-    // продолжаем поиск из s1
     const seen = new Map();
     const dfs = (s) => {
-      if (isWin(s, lv)) return true;
+      if (isWin(s, level)) return true;
       const k = key(s);
       if (seen.has(k)) return seen.get(k);
       seen.set(k, false);
-      for (const mm of moves(s, lv)) if (dfs(apply(s, lv, mm))) { seen.set(k, true); return true; }
+      for (const mm of moves(s, level)) if (dfs(apply(s, level, stacks, mm))) { seen.set(k, true); return true; }
       return false;
     };
-    if (dfs(s1)) winning++;
+    if (dfs(apply(s0, level, stacks, m))) winning++;
   }
   return { total: first.length, winning };
 }

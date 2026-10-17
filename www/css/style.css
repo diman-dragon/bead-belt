@@ -1,6 +1,6 @@
 :root {
-  --bg1: #1e293b;
-  --bg2: #0b1220;
+  --bg1: #2a4170;
+  --bg2: #0e1834;
   --ink: #e2e8f0;
   --muted: #94a3b8;
   --accent: #38bdf8;
@@ -132,3 +132,21 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   #hint { animation: none; }
 }
+
+/* кнопка звука: хорошо видно, включён звук или нет */
+#btnSound { transition: background .15s, color .15s, transform .15s; }
+#btnSound.on { color: #7dd3fc; background: rgba(56, 189, 248, 0.2); box-shadow: inset 0 0 0 1.5px rgba(125, 211, 252, 0.55); }
+#btnSound.off { color: #fca5a5; background: rgba(239, 68, 68, 0.2); box-shadow: inset 0 0 0 1.5px rgba(248, 113, 113, 0.55); }
+#btnSound.pop { animation: snd-pop .28s ease-out; }
+@keyframes snd-pop { 0% { transform: scale(1); } 40% { transform: scale(1.25); } 100% { transform: scale(1); } }
+
+#toast {
+  position: fixed; left: 50%; top: calc(max(var(--sat), 24px) + 56px);
+  transform: translate(-50%, -8px);
+  padding: 9px 16px; border-radius: 999px;
+  background: rgba(15, 23, 42, 0.92); border: 1px solid rgba(255, 255, 255, 0.2);
+  font-weight: 700; font-size: 14px; white-space: nowrap;
+  opacity: 0; pointer-events: none; z-index: 20;
+  transition: opacity .18s, transform .18s;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }

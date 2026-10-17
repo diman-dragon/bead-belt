@@ -1,42 +1,81 @@
 // Геометрия игрового поля (логические координаты 360x600) и траектория конвейера.
+//
+// Сверху вниз: лотки -> накопитель (физика) -> конвейер -> коробки -> очередь коробок.
 
 export const W = 360;
 export const H = 600;
 
-// Конвейер — «стадион»: две прямые и две полуокружности. Движение по часовой стрелке.
+// ---------- конвейер: «стадион» (две прямые + две полуокружности), по часовой стрелке ----------
 export const CX = 180;
-export const CY = 322;
-export const R = 78;          // радиус дуги
-export const HALF = 80;       // половина длины прямого участка
+export const CY = 338;
+export const R = 34;            // радиус дуги: чем меньше, тем «уже» конвейер по высоте
+export const HALF = 96;         // половина длины прямого участка
 export const STRAIGHT = HALF * 2;
 export const ARC = Math.PI * R;
-export const L = 2 * STRAIGHT + 2 * ARC; // полная длина пути
+export const L = 2 * STRAIGHT + 2 * ARC;
 
-export const MARBLE_R = 11;   // радиус шарика на конвейере
-export const SMALL_R = 9;     // радиус шарика в лотке/коробке
+export const MARBLE_R = 10.5;   // шарик на конвейере
+export const BIN_R = 9.5;       // шарик в накопителе
+export const TRAY_R = 8.5;      // шарик в лотке
+export const BOX_R = 9;         // шарик в коробке
 
-// Точка входа шариков на конвейер (середина верхней прямой) и воронка над ней.
-export const ENTRY_S = HALF;
-export const CHUTE = { x: CX, y: CY - R - 34 };
+export const ENTRY_S = HALF;    // точка входа: середина верхней прямой (x = CX)
 
-// Лотки сверху
-export const COL_X = [60, 180, 300];
-export const TRAY_W = 96;
+// ---------- накопитель ----------
+export const BIN = {
+  left: 40, right: 320,
+  top: 152,
+  wallBottom: 208,              // ниже — скошенные стенки воронки
+  floorY: 266,                  // уровень затвора
+  gateL: 160, gateR: 200,
+};
+export const BIN_CAP = 30;      // сколько шариков помещается
+
+// Стенки накопителя для физики (отрезки).
+export function binSegments() {
+  const b = BIN;
+  return [
+    [b.left, b.top - 20, b.left, b.wallBottom],
+    [b.left, b.wallBottom, b.gateL, b.floorY],
+    [b.gateL, b.floorY, b.gateR, b.floorY],
+    [b.gateR, b.floorY, b.right, b.wallBottom],
+    [b.right, b.wallBottom, b.right, b.top - 20],
+  ];
+}
+
+// ---------- лотки сверху ----------
+export const COL_X = [62, 180, 298];
+export const TRAY_W = 100;
 export const TRAY_H = 86;
-export const TRAY_TOP = 98;       // верх переднего лотка
-export const TRAY_STEP = 19;      // смещение вверх для каждого следующего лотка
+export const TRAY_TOP = 54;     // верх переднего лотка
+export const TRAY_STEP = 22;    // насколько каждый следующий лоток выглядывает вверх (видно два следующих)
 
-// Коробки снизу
+// depth может быть дробным — так лотки плавно выдвигаются вперёд.
+export function trayRect(ci, depth = 0) {
+  const scale = Math.pow(0.94, depth);
+  const w = TRAY_W * scale;
+  const h = TRAY_H * scale;
+  const top = TRAY_TOP - depth * TRAY_STEP;
+  return { x: COL_X[ci] - w / 2, y: top + (TRAY_H - h), w, h, cx: COL_X[ci], scale };
+}
+
+// ---------- коробки снизу ----------
 export const BOX_W = 80;
-export const BOX_H = 86;
-export const BOX_TOP = 478;
-export const BOX_CX = (i) => 45 + 90 * i;
+export const BOX_H = 94;
+export const BOX_TOP = 416;
+export const BOX_CX = (i) => 54 + 84 * i;
+export const QUEUE_Y = 528;       // верх мини-коробок «ДАЛЕЕ»
 
+export function boxSlotPos(i, k) {
+  return { x: BOX_CX(i) + (k - 1) * 22, y: BOX_TOP + 36 };
+}
+
+// ---------- путь конвейера ----------
 export function mod(a, m) {
   return ((a % m) + m) % m;
 }
 
-// Координаты точки на пути конвейера по параметру s.
+// Точка на пути по параметру s и направление движения (для рёбер ленты).
 export function pos(sRaw) {
   const s = mod(sRaw, L);
   if (s < STRAIGHT) {
@@ -53,6 +92,19 @@ export function pos(sRaw) {
   return { x: CX - HALF - R * Math.sin(phi), y: CY + R * Math.cos(phi) };
 }
 
+// Нормаль (наружу) в точке пути — нужна для рёбер ленты.
+export function normal(sRaw) {
+  const s = mod(sRaw, L);
+  if (s < STRAIGHT) return { x: 0, y: -1 };
+  if (s < STRAIGHT + ARC) {
+    const phi = (s - STRAIGHT) / R;
+    return { x: Math.sin(phi), y: -Math.cos(phi) };
+  }
+  if (s < 2 * STRAIGHT + ARC) return { x: 0, y: 1 };
+  const phi = (s - 2 * STRAIGHT - ARC) / R;
+  return { x: -Math.sin(phi), y: Math.cos(phi) };
+}
+
 // Параметр s точки нижней половины конвейера с заданным x (место, где коробка забирает шарики).
 export function pickupS(x) {
   if (x >= CX - HALF && x <= CX + HALF) {
@@ -64,17 +116,4 @@ export function pickupS(x) {
   }
   const phi = Math.PI - Math.asin(Math.min(1, (x - (CX + HALF)) / R));
   return STRAIGHT + R * phi;
-}
-
-// Центры трёх ячеек коробки i.
-export function boxSlotPos(i, k) {
-  return { x: BOX_CX(i) + (k - 1) * 24, y: BOX_TOP + 54 };
-}
-
-export function trayRect(ci, depth = 0) {
-  const scale = Math.pow(0.93, depth);
-  const w = TRAY_W * scale;
-  const h = TRAY_H * scale;
-  const top = TRAY_TOP - depth * TRAY_STEP;
-  return { x: COL_X[ci] - w / 2, y: top + (TRAY_H - h), w, h, cx: COL_X[ci], scale };
 }

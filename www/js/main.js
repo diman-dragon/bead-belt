@@ -16,7 +16,8 @@ const STR = {
     win: 'Уровень пройден!', lose: 'Конвейер забит!',
     winText: (n) => `Нажатий: ${n}.`, winLast: (n) => `Нажатий: ${n}. Новые уровни скоро появятся!`,
     loseText: 'Нет места для шариков, а подходящих коробок нет. Попробуй другой порядок лотков.',
-    hint: 'Нажимай на лотки сверху — шарики попадут в коробки своего цвета',
+    soundOn: 'Звук включён', soundOff: 'Звук выключен',
+    hint: ['Нажимай на лотки сверху:', 'шарики попадут в коробки своего цвета'],
   },
   en: {
     sub: 'Drop beads on the belt and fill the boxes with matching colors.',
@@ -25,7 +26,8 @@ const STR = {
     win: 'Level complete!', lose: 'Belt jammed!',
     winText: (n) => `Taps: ${n}.`, winLast: (n) => `Taps: ${n}. More levels are coming soon!`,
     loseText: 'The belt is full and no box matches. Try a different tray order.',
-    hint: 'Tap the trays on top — beads go into the boxes of the same color',
+    soundOn: 'Sound on', soundOff: 'Sound off',
+    hint: ['Tap the trays on top:', 'beads go into boxes of their color'],
   },
 };
 const lang = /^ru|^uk|^be/i.test(navigator.language || '') ? 'ru' : 'en';
@@ -57,14 +59,31 @@ function setText() {
   $('btnPauseRestart').textContent = T.restart;
   $('btnMenu').textContent = T.menu;
   $('btnEndMenu').textContent = T.menu;
-  $('hint').textContent = T.hint;
   $('ver').textContent = 'v' + VERSION;
   document.documentElement.lang = lang;
 }
 
+// У SVG-элементов нет свойства hidden (оно есть только у HTML), поэтому переключаем атрибут.
+function setHidden(el, hide) {
+  if (hide) el.setAttribute('hidden', '');
+  else el.removeAttribute('hidden');
+}
+
 function updateSoundIcon() {
-  $('icoSoundOn').hidden = !save.sound;
-  $('icoSoundOff').hidden = save.sound;
+  setHidden($('icoSoundOn'), !save.sound);
+  setHidden($('icoSoundOff'), save.sound);
+  $('btnSound').setAttribute('aria-pressed', String(!save.sound));
+  $('btnSound').classList.toggle('on', save.sound);
+  $('btnSound').classList.toggle('off', !save.sound);
+}
+
+let toastTimer = 0;
+function showToast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1200);
 }
 
 function onGameEvent(type) {
@@ -80,8 +99,8 @@ function onGameEvent(type) {
 }
 
 function hideHint() {
-  if (!$('hint').hidden) {
-    $('hint').hidden = true;
+  if (game && game.hintText) {
+    game.hintText = null;
     save.seenHint = true;
     writeSave(save);
   }
@@ -92,7 +111,7 @@ function startLevel() {
   game = new Game(level, onGameEvent);
   game.lang = lang;
   $('levelLabel').textContent = `${T.level} ${level.id}`;
-  $('hint').hidden = !(levelIndex === 0 && !save.seenHint);
+  game.hintText = levelIndex === 0 && !save.seenHint ? T.hint : null;
   show(null);
 }
 
@@ -154,11 +173,16 @@ bind('btnNext', () => {
   levelIndex = levelIndex >= LEVELS.length - 1 ? 0 : levelIndex + 1; // после последнего уровня — сначала
   startLevel();
 });
-bind('btnSound', () => {
+$('btnSound').addEventListener('click', () => {
+  unlockAudio();
   save.sound = !save.sound;
   setSoundEnabled(save.sound);
   writeSave(save);
   updateSoundIcon();
+  const b = $('btnSound');
+  b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop');
+  showToast(save.sound ? T.soundOn : T.soundOff);
+  if (save.sound) playSound('soundOn'); // слышен только при включении — как подтверждение
 });
 
 // Кнопка «Назад» на Android: игра -> пауза -> меню -> выход

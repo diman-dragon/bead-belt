@@ -55,6 +55,10 @@ export function playSound(name) {
       tone(660, 0.14, { type: 'sine', vol: 0.14 });
       tone(990, 0.2, { type: 'sine', vol: 0.14, delay: 0.1 });
       break;
+    case 'soundOn':
+      tone(660, 0.12, { type: 'sine', vol: 0.18 });
+      tone(880, 0.16, { type: 'sine', vol: 0.18, delay: 0.09 });
+      break;
     case 'win':
       [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.28, { type: 'triangle', vol: 0.16, delay: i * 0.12 }));
       break;

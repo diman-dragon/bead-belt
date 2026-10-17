@@ -9,6 +9,7 @@
 </head>
 <body>
   <div id="app">
+    <div id="toast" role="status" aria-live="polite"></div>
     <header id="hud">
       <button id="btnPause" class="icon-btn" aria-label="Pause">
         <svg viewBox="0 0 24 24" width="22" height="22"><rect x="6" y="5" width="4" height="14" rx="1.5" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1.5" fill="currentColor"/></svg>
@@ -27,7 +28,6 @@
 
     <main id="stage">
       <canvas id="cv"></canvas>
-      <div id="hint" hidden></div>
     </main>
 
     <section id="screenMenu" class="overlay">
