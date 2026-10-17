@@ -1,20 +1,25 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#000000">
   <title>Bead Belt</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div id="app">
+    <div id="bgfx" aria-hidden="true"></div>
     <div id="toast" role="status" aria-live="polite"></div>
+
     <header id="hud">
       <button id="btnPause" class="icon-btn" aria-label="Pause">
         <svg viewBox="0 0 24 24" width="22" height="22"><rect x="6" y="5" width="4" height="14" rx="1.5" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1.5" fill="currentColor"/></svg>
       </button>
-      <div id="levelLabel">Level 1</div>
+      <div id="hudMid">
+        <div id="levelLabel">Level 1</div>
+        <div id="prog"><i id="progBar"></i></div>
+      </div>
       <div class="hud-right">
         <button id="btnSound" class="icon-btn" aria-label="Sound">
           <svg id="icoSoundOn" viewBox="0 0 24 24" width="22" height="22"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 010 7M18.5 6a8.5 8.5 0 010 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -30,29 +35,121 @@
       <canvas id="cv"></canvas>
     </main>
 
-    <section id="screenMenu" class="overlay">
-      <div class="card">
+    <!-- Главное меню -->
+    <section id="screenMenu" class="overlay overlay-menu">
+      <div class="menu">
         <div class="logo" aria-hidden="true">
-          <i style="--c:#ff0f35"></i><i style="--c:#ffea00"></i><i style="--c:#00f060"></i><i style="--c:#00e0ff"></i><i style="--c:#2a54ff"></i>
+          <i style="--c:#ff0f35;--d:0s"></i><i style="--c:#ffea00;--d:.12s"></i><i style="--c:#00e65a;--d:.24s"></i><i style="--c:#00d4f5;--d:.36s"></i><i style="--c:#2a54ff;--d:.48s"></i><i style="--c:#d010ff;--d:.6s"></i>
         </div>
-        <h1>Bead Belt</h1>
-        <p id="menuSub"></p>
-        <button id="btnPlay" class="btn primary"></button>
+        <h1 class="title">Bead <span>Belt</span></h1>
+        <p id="menuSub" class="sub"></p>
+        <button id="btnPlay" class="btn primary big">
+          <svg viewBox="0 0 24 24" width="26" height="26"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>
+          <span class="big-txt"><b id="playLabel"></b><small id="playLevel"></small></span>
+        </button>
+        <div class="tiles">
+          <button id="btnLevels" class="tile">
+            <svg viewBox="0 0 24 24" width="24" height="24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" fill="currentColor"/></svg>
+            <span data-i18n="levels"></span>
+          </button>
+          <button id="btnSettings" class="tile">
+            <svg viewBox="0 0 24 24" width="24" height="24"><path d="M12 8.6a3.4 3.4 0 100 6.8 3.4 3.4 0 000-6.8zm8.4 4.4v-2l-2.1-.5a6.6 6.6 0 00-.7-1.7l1.1-1.9-1.4-1.4-1.9 1.1a6.6 6.6 0 00-1.7-.7L13 3.6h-2l-.5 2.1c-.6.2-1.2.4-1.7.7L6.9 5.3 5.5 6.7l1.1 1.9c-.3.5-.6 1.1-.7 1.7L3.8 11v2l2.1.5c.2.6.4 1.2.7 1.7l-1.1 1.9 1.4 1.4 1.9-1.1c.5.3 1.1.6 1.7.7l.5 2.1h2l.5-2.1c.6-.2 1.2-.4 1.7-.7l1.9 1.1 1.4-1.4-1.1-1.9c.3-.5.6-1.1.7-1.7z" fill="currentColor"/></svg>
+            <span data-i18n="settings"></span>
+          </button>
+          <button id="btnAbout" class="tile">
+            <svg viewBox="0 0 24 24" width="24" height="24"><path d="M12 3a9 9 0 100 18 9 9 0 000-18zm1 13.5h-2V11h2zm0-7.2h-2V7.3h2z" fill="currentColor"/></svg>
+            <span data-i18n="about"></span>
+          </button>
+        </div>
         <div id="ver" class="ver"></div>
       </div>
     </section>
 
+    <!-- Выбор уровня -->
+    <section id="screenLevels" class="overlay" hidden>
+      <div class="card wide">
+        <div class="card-head">
+          <button class="back" data-back aria-label="Back"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <h2 data-i18n="levels"></h2>
+          <span id="lvCount" class="count"></span>
+        </div>
+        <div id="lvGrid" class="grid"></div>
+        <div class="legend"><span><i class="dot done"></i><em data-i18n="legDone"></em></span><span><i class="dot fog"></i><em data-i18n="legFog"></em></span></div>
+      </div>
+    </section>
+
+    <!-- Настройки -->
+    <section id="screenSettings" class="overlay" hidden>
+      <div class="card wide">
+        <div class="card-head">
+          <button class="back" data-back aria-label="Back"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <h2 data-i18n="settings"></h2>
+          <span class="count"></span>
+        </div>
+        <div class="set-list">
+          <div class="set-row">
+            <span class="set-label" data-i18n="sound"></span>
+            <button id="swSound" class="switch" role="switch" aria-checked="true"><i></i></button>
+          </div>
+          <div class="set-row">
+            <span class="set-label" data-i18n="vibration"></span>
+            <button id="swVibe" class="switch" role="switch" aria-checked="true"><i></i></button>
+          </div>
+          <div class="set-block">
+            <span class="set-label" data-i18n="theme"></span>
+            <div id="segTheme" class="seg">
+              <button data-v="dark"><i class="sw sw-dark"></i><span data-i18n="themeDark"></span></button>
+              <button data-v="light"><i class="sw sw-light"></i><span data-i18n="themeLight"></span></button>
+              <button data-v="auto"><i class="sw sw-auto"></i><span data-i18n="themeAuto"></span></button>
+            </div>
+          </div>
+          <div class="set-block">
+            <span class="set-label" data-i18n="language"></span>
+            <div id="segLang" class="seg">
+              <button data-v="auto"><span data-i18n="langAuto"></span></button>
+              <button data-v="ru"><span>Русский</span></button>
+              <button data-v="en"><span>English</span></button>
+            </div>
+          </div>
+          <button id="btnReset" class="btn danger"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- О нас -->
+    <section id="screenAbout" class="overlay" hidden>
+      <div class="card wide about">
+        <div class="card-head">
+          <button class="back" data-back aria-label="Back"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <h2 data-i18n="about"></h2>
+          <span class="count"></span>
+        </div>
+        <div class="logo small" aria-hidden="true">
+          <i style="--c:#ff0f35;--d:0s"></i><i style="--c:#ffea00;--d:.12s"></i><i style="--c:#00e65a;--d:.24s"></i><i style="--c:#00d4f5;--d:.36s"></i><i style="--c:#2a54ff;--d:.48s"></i><i style="--c:#d010ff;--d:.6s"></i>
+        </div>
+        <h3 class="about-title">Bead Belt</h3>
+        <p id="aboutVer" class="ver"></p>
+        <p id="aboutText" class="about-text"></p>
+        <p id="aboutPrivacy" class="about-text soft"></p>
+        <p id="aboutMade" class="about-text soft"></p>
+      </div>
+    </section>
+
+    <!-- Пауза -->
     <section id="screenPause" class="overlay" hidden>
       <div class="card">
         <h2 id="pauseTitle"></h2>
         <button id="btnResume" class="btn primary"></button>
         <button id="btnPauseRestart" class="btn"></button>
+        <button id="btnPauseSettings" class="btn"></button>
         <button id="btnMenu" class="btn"></button>
       </div>
     </section>
 
+    <!-- Конец уровня -->
     <section id="screenEnd" class="overlay" hidden>
       <div class="card">
+        <div id="endIcon" class="end-icon" aria-hidden="true"></div>
         <h2 id="endTitle"></h2>
         <p id="endText"></p>
         <button id="btnNext" class="btn primary"></button>

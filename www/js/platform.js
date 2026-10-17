@@ -9,7 +9,11 @@ function plugin(name) {
   try { return cap()?.Plugins?.[name]; } catch { return undefined; }
 }
 
+let hapticsOn = true;
+export function setHapticsEnabled(v) { hapticsOn = !!v; }
+
 export function haptic(kind = 'light') {
+  if (!hapticsOn) return;
   try {
     const h = plugin('Haptics');
     if (h) {

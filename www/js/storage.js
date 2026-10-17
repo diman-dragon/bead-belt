@@ -1,7 +1,7 @@
 // Сохранение прогресса в localStorage (в WebView Capacitor он сохраняется между запусками).
 const KEY = 'beadbelt.save.v1';
 
-const DEFAULTS = { sound: true, level: 1, completed: {}, seenHint: false };
+const DEFAULTS = { sound: true, vibration: true, theme: 'dark', lang: 'auto', level: 1, completed: {}, seenHint: false };
 
 export function loadSave() {
   try {

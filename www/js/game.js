@@ -29,6 +29,9 @@ export class Game {
     this.bin = new Bin();
     this.stacks = boxStacks(level);          // за активной коробкой в каждой стопке лежат следующие
     this.stackAdv = this.stacks.map(() => 0);
+    this.totalBoxes = level.boxes.length;      // для полоски прогресса
+    this.doneBoxes = 0;
+    this.confetti = [];
     this.leaving = [];                       // заполненные коробки, которые уезжают (на их месте уже стоит следующая)
     this.fog = { top: 2, bottom: 2, ...(level.fog || {}) }; // сколько следующих лотков/коробок видно заранее // 1 -> 0: стопка выдвигается вперёд
     this.boxes = [];
@@ -119,6 +122,7 @@ export class Game {
     this.updateBoxes(dt);
     this.updateTrays(dt);
     this.updateFx(dt);
+    this.updateConfetti(dt);
     if (this.gateGlow > 0) this.gateGlow = Math.max(0, this.gateGlow - dt * 4);
     for (let i = 0; i < this.stackAdv.length; i++) {
       if (this.stackAdv[i] > 0) this.stackAdv[i] = Math.max(0, this.stackAdv[i] - dt / 0.34);
@@ -223,6 +227,7 @@ export class Game {
       this.emit('capture', {});
       if (b.arrived >= BOX_SIZE && !b.done) {
         b.done = true;
+        this.doneBoxes++;
         b.popT = 0;
         b.flash = 1;
         this.burst(G.BOX_CX(b.i), G.BOX_TOP + 40, b.color, 26, 170);
@@ -284,6 +289,31 @@ export class Game {
     }
   }
 
+  // Конфетти при победе
+  spawnConfetti() {
+    const keys = ['R', 'Y', 'G', 'O', 'B', 'P'];
+    for (let i = 0; i < 110; i++) {
+      this.confetti.push({
+        x: Math.random() * G.W, y: -10 - Math.random() * 120,
+        vx: (Math.random() - 0.5) * 70, vy: 110 + Math.random() * 190,
+        rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 12,
+        w: 5 + Math.random() * 5, h: 3 + Math.random() * 4,
+        phase: Math.random() * 6.28, color: keys[i % keys.length],
+      });
+    }
+  }
+
+  updateConfetti(dt) {
+    for (let k = this.confetti.length - 1; k >= 0; k--) {
+      const c = this.confetti[k];
+      c.phase += dt * 5;
+      c.x += (c.vx + Math.sin(c.phase) * 40) * dt;
+      c.y += c.vy * dt;
+      c.rot += c.vr * dt;
+      if (c.y > G.H + 20) this.confetti.splice(k, 1);
+    }
+  }
+
   burst(x, y, color, n, speed) {
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -311,6 +341,7 @@ export class Game {
     if (!boxesLeft && this.flyers.length === 0 && this.leaving.length === 0) {
       this.state = 'won';
       this.endT = 0;
+      this.spawnConfetti();
       this.emit('win', {});
       return;
     }

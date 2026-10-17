@@ -19,6 +19,36 @@ export const COLORS = {
 };
 const col = (k) => COLORS[k] || COLORS.R;
 
+// Темы «станка» (холст). Тёмная — под AMOLED, светлая — серебристая.
+const THEMES = {
+  dark: {
+    panel: ['#26396b', '#16254f', '#0b1431'], panelEdge: 'rgba(120,150,210,0.4)', panelInner: 'rgba(0,0,0,0.55)', panelGlow: 'rgba(80,130,230,0.18)',
+    binWall: ['#0c1636', '#1c3162'], binGlow: ['rgba(110,170,255,0.2)', 'rgba(110,170,255,0)'], grid: 'rgba(140,180,255,0.06)',
+    tube: ['#2a3552', '#8fa0c4', '#46557a', '#1c2640'], tubeIn: 'rgba(5,10,24,0.82)',
+    frameDark: '#060a18', frameLight: '#8a9bc0', frameMid: '#475a86', frameHi: 'rgba(255,255,255,0.5)',
+    flange: ['#b5c3e0', '#52638c'], gate: ['#c3cfe8', '#6f81aa', '#2b3860'],
+    gaugeBg: 'rgba(4,8,20,0.7)', gaugeEdge: 'rgba(160,185,235,0.4)', gaugeText: 'rgba(190,205,240,0.85)',
+    island: ['#060b1a', '#0f1833'], rail: ['#0a1020', '#aab8d6', '#5f7099', '#27345a', '#0d1426'],
+    ribDark: 'rgba(0,0,0,0.55)', ribLight: 'rgba(150,180,255,0.14)', counter: 'rgba(200,215,245,0.9)',
+    plat: ['#222f55', '#0f1834'], platEdge: 'rgba(160,185,235,0.32)', slot: ['rgba(2,5,16,0.88)', 'rgba(2,5,16,0.5)'], slotEdge: ['rgba(150,180,240,0.4)', 'rgba(150,180,240,0.15)'],
+    screw: ['#9fb0cf', '#3a4766'], shade: '#040a1c', shadow: 0.35,
+  },
+  light: {
+    panel: ['#f3f6ff', '#d6dff4', '#bccae8'], panelEdge: 'rgba(255,255,255,0.95)', panelInner: 'rgba(70,90,140,0.28)', panelGlow: 'rgba(255,255,255,0.55)',
+    binWall: ['#c8d6f3', '#adc1ec'], binGlow: ['rgba(255,255,255,0.6)', 'rgba(255,255,255,0)'], grid: 'rgba(60,90,160,0.11)',
+    tube: ['#94a3c6', '#f2f5ff', '#b4c0dd', '#7280a6'], tubeIn: 'rgba(40,55,95,0.78)',
+    frameDark: '#56668f', frameLight: '#f6f8ff', frameMid: '#a7b6d8', frameHi: 'rgba(255,255,255,0.9)',
+    flange: ['#ffffff', '#a7b6d8'], gate: ['#ffffff', '#b0bedb', '#7a8ab1'],
+    gaugeBg: 'rgba(255,255,255,0.75)', gaugeEdge: 'rgba(60,80,130,0.5)', gaugeText: 'rgba(40,55,95,0.95)',
+    island: ['#a9b7d8', '#c3cfea'], rail: ['#5f6f98', '#f5f7ff', '#c2cde8', '#9cadd3', '#7e8eb6'],
+    ribDark: 'rgba(40,55,95,0.4)', ribLight: 'rgba(255,255,255,0.4)', counter: 'rgba(30,45,85,0.92)',
+    plat: ['#dde5f7', '#bdcbe9'], platEdge: 'rgba(60,80,130,0.35)', slot: ['rgba(70,90,140,0.4)', 'rgba(70,90,140,0.2)'], slotEdge: ['rgba(60,80,130,0.5)', 'rgba(60,80,130,0.22)'],
+    screw: ['#ffffff', '#8c9bc0'], shade: '#6f7ba0', shadow: 0.22,
+  },
+};
+let TH = THEMES.dark;
+export function setTheme(name) { TH = THEMES[name] || THEMES.dark; }
+
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 const easeOutBack = (t) => {
   const c1 = 1.9;
@@ -29,8 +59,8 @@ const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 // ---------------------------------------------------------------- спрайты
 
-const SP = 112;       // размер спрайта шарика
-const PAD = 8;
+const SP = 128;       // размер спрайта шарика
+const PAD = 10;
 const spriteCache = new Map();
 let shadowSprite = null;
 
@@ -61,58 +91,86 @@ function sprite(key) {
   const k = col(key);
   const m = SP / 2;
   const r = m - PAD;
+  const disc = () => { x.beginPath(); x.arc(m, m, r, 0, Math.PI * 2); };
+
+  // мягкое неоновое свечение вокруг шарика
+  let g = x.createRadialGradient(m, m, r * 0.85, m, m, r + PAD * 0.95);
+  g.addColorStop(0, k.base + '55');
+  g.addColorStop(1, k.base + '00');
+  x.fillStyle = g;
+  x.fillRect(0, 0, SP, SP);
 
   // основное тело сферы
-  let g = x.createRadialGradient(m - r * 0.38, m - r * 0.44, r * 0.05, m, m, r * 1.05);
+  g = x.createRadialGradient(m - r * 0.36, m - r * 0.42, r * 0.04, m + r * 0.04, m + r * 0.06, r * 1.06);
   g.addColorStop(0, k.hl);
-  g.addColorStop(0.14, k.lt);
-  g.addColorStop(0.52, k.base);
-  g.addColorStop(0.88, k.dk);
+  g.addColorStop(0.12, k.lt);
+  g.addColorStop(0.5, k.base);
+  g.addColorStop(0.86, k.dk);
   g.addColorStop(1, k.deep);
   x.fillStyle = g;
-  x.beginPath(); x.arc(m, m, r, 0, Math.PI * 2); x.fill();
+  disc(); x.fill();
 
   x.save();
-  x.beginPath(); x.arc(m, m, r, 0, Math.PI * 2); x.clip();
+  disc(); x.clip();
 
-  // отражённый свет снизу (подсветка от поверхности)
-  g = x.createRadialGradient(m + r * 0.1, m + r * 1.0, r * 0.05, m + r * 0.1, m + r * 0.95, r * 0.95);
+  // свет, прошедший сквозь «стекло» — тёплое пятно в нижней части
+  g = x.createRadialGradient(m + r * 0.22, m + r * 0.42, r * 0.02, m + r * 0.22, m + r * 0.42, r * 0.95);
   g.addColorStop(0, k.lt);
-  g.addColorStop(1, 'rgba(0,0,0,0)');
-  x.globalAlpha = 0.55;
+  g.addColorStop(0.55, k.base + '66');
+  g.addColorStop(1, k.base + '00');
+  x.globalCompositeOperation = 'screen';
+  x.globalAlpha = 0.6;
   x.fillStyle = g;
   x.fillRect(0, 0, SP, SP);
   x.globalAlpha = 1;
+  x.globalCompositeOperation = 'source-over';
 
   // затемнённая кромка (эффект Френеля)
-  g = x.createRadialGradient(m, m, r * 0.62, m, m, r);
+  g = x.createRadialGradient(m, m, r * 0.6, m, m, r);
   g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(1, 'rgba(0,0,0,0.3)');
+  g.addColorStop(1, 'rgba(0,0,0,0.34)');
   x.fillStyle = g;
   x.fillRect(0, 0, SP, SP);
 
-  glyph(x, key, m + r * 0.04, m + r * 0.16, r);
+  glyph(x, key, m + r * 0.03, m + r * 0.18, r);
   x.restore();
 
-  // основной блик (окно)
+  // отражённый свет по нижнему правому краю
   x.save();
-  x.translate(m - r * 0.36, m - r * 0.5);
-  x.rotate(-0.62);
-  g = x.createLinearGradient(0, -r * 0.2, 0, r * 0.2);
-  g.addColorStop(0, 'rgba(255,255,255,0.98)');
-  g.addColorStop(1, 'rgba(255,255,255,0.18)');
-  x.fillStyle = g;
-  x.beginPath(); x.ellipse(0, 0, r * 0.33, r * 0.18, 0, 0, Math.PI * 2); x.fill();
+  disc(); x.clip();
+  x.strokeStyle = k.hl;
+  x.globalAlpha = 0.5;
+  x.lineWidth = r * 0.12;
+  x.lineCap = 'round';
+  x.beginPath(); x.arc(m, m, r * 0.9, Math.PI * 0.08, Math.PI * 0.62); x.stroke();
   x.restore();
 
-  // маленький вторичный блик справа внизу
-  x.fillStyle = 'rgba(255,255,255,0.45)';
-  x.beginPath(); x.ellipse(m + r * 0.44, m + r * 0.5, r * 0.09, r * 0.05, -0.8, 0, Math.PI * 2); x.fill();
+  // основной блик (окно) + мягкое свечение вокруг него
+  x.save();
+  x.translate(m - r * 0.37, m - r * 0.5);
+  x.rotate(-0.62);
+  g = x.createRadialGradient(0, 0, 0, 0, 0, r * 0.5);
+  g.addColorStop(0, 'rgba(255,255,255,0.45)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g;
+  x.beginPath(); x.ellipse(0, 0, r * 0.5, r * 0.34, 0, 0, Math.PI * 2); x.fill();
+  g = x.createLinearGradient(0, -r * 0.2, 0, r * 0.2);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(1, 'rgba(255,255,255,0.3)');
+  x.fillStyle = g;
+  x.beginPath(); x.ellipse(0, 0, r * 0.3, r * 0.15, 0, 0, Math.PI * 2); x.fill();
+  x.restore();
+
+  // острая точка-искра и вторичный блик
+  x.fillStyle = 'rgba(255,255,255,0.95)';
+  x.beginPath(); x.arc(m - r * 0.12, m - r * 0.7, r * 0.055, 0, Math.PI * 2); x.fill();
+  x.fillStyle = 'rgba(255,255,255,0.5)';
+  x.beginPath(); x.ellipse(m + r * 0.46, m + r * 0.52, r * 0.1, r * 0.052, -0.8, 0, Math.PI * 2); x.fill();
 
   // тонкий контур
-  x.strokeStyle = 'rgba(0,0,0,0.35)';
-  x.lineWidth = 1.2;
-  x.beginPath(); x.arc(m, m, r - 0.4, 0, Math.PI * 2); x.stroke();
+  x.strokeStyle = k.deep + 'aa';
+  x.lineWidth = 1.3;
+  x.beginPath(); x.arc(m, m, r - 0.5, 0, Math.PI * 2); x.stroke();
 
   spriteCache.set(key, c);
   return c;
@@ -177,8 +235,8 @@ function hgrad(ctx, x0, x1, stops) {
 
 function screw(ctx, x, y) {
   const g = ctx.createRadialGradient(x - 1, y - 1, 0.5, x, y, 4);
-  g.addColorStop(0, '#9fb0cf');
-  g.addColorStop(1, '#3a4766');
+  g.addColorStop(0, TH.screw[0]);
+  g.addColorStop(1, TH.screw[1]);
   ctx.fillStyle = g;
   ctx.beginPath(); ctx.arc(x, y, 3.6, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = 'rgba(10,16,30,0.7)';
@@ -211,6 +269,7 @@ export function draw(ctx, game) {
   drawBoxes(ctx, game, t);
   drawFlyers(ctx, game);
   drawFx(ctx, game);
+  drawConfetti(ctx, game);
   drawHint(ctx, game, t);
 }
 
@@ -251,17 +310,17 @@ function drawPanel(ctx) {
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   roundRect(ctx, x + 2, y + 7, w, h, 24); ctx.fill();
-  ctx.fillStyle = vgrad(ctx, y, y + h, [[0, '#304a80'], [0.5, '#1d2f5c'], [1, '#12204a']]);
+  ctx.fillStyle = vgrad(ctx, y, y + h, [[0, TH.panel[0]], [0.5, TH.panel[1]], [1, TH.panel[2]]]);
   roundRect(ctx, x, y, w, h, 24); ctx.fill();
-  ctx.strokeStyle = 'rgba(120,150,210,0.45)';
+  ctx.strokeStyle = TH.panelEdge;
   ctx.lineWidth = 2;
   roundRect(ctx, x + 1, y + 1, w - 2, h - 2, 23); ctx.stroke();
-  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.strokeStyle = TH.panelInner;
   ctx.lineWidth = 1.5;
   roundRect(ctx, x + 6, y + 6, w - 12, h - 12, 19); ctx.stroke();
   // мягкое свечение в центре
   const g = ctx.createRadialGradient(G.CX, G.CY - 10, 10, G.CX, G.CY - 10, 190);
-  g.addColorStop(0, 'rgba(80,130,230,0.20)');
+  g.addColorStop(0, TH.panelGlow);
   g.addColorStop(1, 'rgba(80,130,230,0)');
   ctx.fillStyle = g;
   roundRect(ctx, x, y, w, h, 24); ctx.fill();
@@ -427,7 +486,7 @@ function drawTrays(ctx, game, t) {
       if (!front) {
         // дальние лотки чуть затемнены, чтобы лоток спереди выделялся
         ctx.globalAlpha = d === 1 ? 0.08 : 0.2;
-        ctx.fillStyle = '#050a18';
+        ctx.fillStyle = TH.shade;
         bucketPath(ctx, G.TRAY_W, G.TRAY_H);
         ctx.fill();
       }
@@ -464,18 +523,18 @@ function drawBin(ctx, game, t) {
 
   // задняя стенка
   binPath(ctx);
-  ctx.fillStyle = vgrad(ctx, b.top, b.floorY, [[0, '#122048'], [1, '#243d74']]);
+  ctx.fillStyle = vgrad(ctx, b.top, b.floorY, [[0, TH.binWall[0]], [1, TH.binWall[1]]]);
   ctx.fill();
   ctx.save();
   binPath(ctx);
   ctx.clip();
   const gl = ctx.createRadialGradient(G.CX, b.top + 40, 6, G.CX, b.top + 40, 150);
-  gl.addColorStop(0, 'rgba(110,170,255,0.22)');
-  gl.addColorStop(1, 'rgba(110,170,255,0)');
+  gl.addColorStop(0, TH.binGlow[0]);
+  gl.addColorStop(1, TH.binGlow[1]);
   ctx.fillStyle = gl;
   ctx.fillRect(b.left, b.top, b.right - b.left, b.floorY - b.top);
   // тонкая сетка на задней стенке
-  ctx.strokeStyle = 'rgba(140,180,255,0.06)';
+  ctx.strokeStyle = TH.grid;
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let gx = b.left + 14; gx < b.right; gx += 28) { ctx.moveTo(gx, b.top); ctx.lineTo(gx, b.floorY); }
@@ -485,10 +544,10 @@ function drawBin(ctx, game, t) {
 
   // труба от затвора к конвейеру
   const tubeTop = b.floorY + 4, tubeBot = G.CY - G.R - 16;
-  ctx.fillStyle = hgrad(ctx, G.CX - 15, G.CX + 15, [[0, '#2a3552'], [0.25, '#8fa0c4'], [0.5, '#46557a'], [1, '#1c2640']]);
+  ctx.fillStyle = hgrad(ctx, G.CX - 15, G.CX + 15, [[0, TH.tube[0]], [0.25, TH.tube[1]], [0.5, TH.tube[2]], [1, TH.tube[3]]]);
   roundRect(ctx, G.CX - 15, tubeTop, 30, tubeBot - tubeTop, 4);
   ctx.fill();
-  ctx.fillStyle = 'rgba(5,10,24,0.82)';
+  ctx.fillStyle = TH.tubeIn;
   roundRect(ctx, G.CX - 10, tubeTop - 1, 20, tubeBot - tubeTop + 1, 3);
   ctx.fill();
 
@@ -515,23 +574,23 @@ function drawBin(ctx, game, t) {
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   binPath(ctx, false);
-  ctx.strokeStyle = '#0b1226'; ctx.lineWidth = 11; ctx.stroke();
-  ctx.strokeStyle = '#8a9bc0'; ctx.lineWidth = 8; ctx.stroke();
-  ctx.strokeStyle = '#475a86'; ctx.lineWidth = 5.5; ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.4;
+  ctx.strokeStyle = TH.frameDark; ctx.lineWidth = 11; ctx.stroke();
+  ctx.strokeStyle = TH.frameLight; ctx.lineWidth = 8; ctx.stroke();
+  ctx.strokeStyle = TH.frameMid; ctx.lineWidth = 5.5; ctx.stroke();
+  ctx.strokeStyle = TH.frameHi; ctx.lineWidth = 1.4;
   ctx.save(); ctx.translate(-1.5, -1.5); ctx.stroke(); ctx.restore();
 
   // верхние фланцы
   for (const fx of [b.left, b.right]) {
-    ctx.fillStyle = vgrad(ctx, b.top - 6, b.top + 4, [[0, '#b5c3e0'], [1, '#52638c']]);
+    ctx.fillStyle = vgrad(ctx, b.top - 6, b.top + 4, [[0, TH.flange[0]], [1, TH.flange[1]]]);
     roundRect(ctx, fx - 9, b.top - 6, 18, 10, 4); ctx.fill();
-    ctx.strokeStyle = '#0b1226'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = TH.frameDark; ctx.lineWidth = 1.5; ctx.stroke();
   }
 
   // затвор
-  ctx.fillStyle = vgrad(ctx, b.floorY - 3, b.floorY + 8, [[0, '#c3cfe8'], [0.4, '#6f81aa'], [1, '#2b3860']]);
+  ctx.fillStyle = vgrad(ctx, b.floorY - 3, b.floorY + 8, [[0, TH.gate[0]], [0.4, TH.gate[1]], [1, TH.gate[2]]]);
   roundRect(ctx, b.gateL - 2, b.floorY - 3, b.gateR - b.gateL + 4, 11, 4); ctx.fill();
-  ctx.strokeStyle = '#0b1226'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.strokeStyle = TH.frameDark; ctx.lineWidth = 1.5; ctx.stroke();
   const glow = game.gateGlow;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
@@ -548,14 +607,14 @@ function drawBin(ctx, game, t) {
   const gx = 46, gy = G.BIN.floorY - 6, gw = 72, gh = 9;
   const fill = clamp01(game.bin.count / G.BIN_CAP);
   roundRect(ctx, gx, gy, gw, gh, 4.5);
-  ctx.fillStyle = 'rgba(4,8,20,0.7)'; ctx.fill();
-  ctx.strokeStyle = 'rgba(160,185,235,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = TH.gaugeBg; ctx.fill();
+  ctx.strokeStyle = TH.gaugeEdge; ctx.lineWidth = 1; ctx.stroke();
   if (fill > 0.01) {
     const hot = fill > 0.8;
     ctx.fillStyle = hgrad(ctx, gx, gx + gw, [[0, '#35e0c0'], [0.65, '#ffd24d'], [1, hot ? '#ff4d5e' : '#ff9d4d']]);
     roundRect(ctx, gx + 1.5, gy + 1.5, Math.max(6, (gw - 3) * fill), gh - 3, 3); ctx.fill();
   }
-  ctx.fillStyle = 'rgba(190,205,240,0.85)';
+  ctx.fillStyle = TH.gaugeText;
   ctx.font = '700 9px system-ui, sans-serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
@@ -595,16 +654,16 @@ function drawBeltBase(ctx, game, t) {
 
   // внутренний «остров»
   trackPath(ctx);
-  ctx.fillStyle = vgrad(ctx, G.CY - G.R, G.CY + G.R, [[0, '#0a1124'], [1, '#141f3d']]);
+  ctx.fillStyle = vgrad(ctx, G.CY - G.R, G.CY + G.R, [[0, TH.island[0]], [1, TH.island[1]]]);
   ctx.fill();
 
   // рельсы: несколько слоёв — получается скруглённый металлический профиль
   const layers = [
-    [42, '#0a1020'],
-    [40, danger ? `rgba(255,${90 + 60 * pulse | 0},${90 + 40 * pulse | 0},1)` : '#aab8d6'],
-    [37.5, danger ? '#8a2432' : '#5f7099'],
-    [34, '#27345a'],
-    [30, '#0d1426'],
+    [42, TH.rail[0]],
+    [40, danger ? `rgba(255,${90 + 60 * pulse | 0},${90 + 40 * pulse | 0},1)` : TH.rail[1]],
+    [37.5, danger ? '#8a2432' : TH.rail[2]],
+    [34, TH.rail[3]],
+    [30, TH.rail[4]],
   ];
   for (const [lw, c] of layers) {
     trackPath(ctx);
@@ -625,7 +684,7 @@ function drawBeltBase(ctx, game, t) {
     ctx.moveTo(p.x - n.x * 14, p.y - n.y * 14);
     ctx.lineTo(p.x + n.x * 14, p.y + n.y * 14);
   }
-  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.strokeStyle = TH.ribDark;
   ctx.lineWidth = 2.4;
   ctx.stroke();
   ctx.beginPath();
@@ -636,7 +695,7 @@ function drawBeltBase(ctx, game, t) {
     ctx.moveTo(p.x - n.x * 14, p.y - n.y * 14);
     ctx.lineTo(p.x + n.x * 14, p.y + n.y * 14);
   }
-  ctx.strokeStyle = 'rgba(150,180,255,0.14)';
+  ctx.strokeStyle = TH.ribLight;
   ctx.lineWidth = 1.6;
   ctx.stroke();
 
@@ -652,7 +711,7 @@ function drawBeltBase(ctx, game, t) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = '800 15px system-ui, sans-serif';
-  ctx.fillStyle = danger ? `rgba(255,${150 + 80 * pulse | 0},${150 + 60 * pulse | 0},1)` : 'rgba(200,215,245,0.9)';
+  ctx.fillStyle = danger ? `rgba(255,${150 + 80 * pulse | 0},${150 + 60 * pulse | 0},1)` : TH.counter;
   ctx.fillText(`${game.occupied} / ${game.n}`, G.CX, G.CY + 0.5);
   ctx.restore();
 }
@@ -838,9 +897,9 @@ function drawBoxSlots(ctx, game) {
   // общая платформа
   const px = G.BOX_CX(0) - G.BOX_W / 2 - 7, pw = G.BOX_CX(3) + G.BOX_W / 2 + 7 - px;
   roundRect(ctx, px, y0 - 5, pw, h + 10, 18);
-  ctx.fillStyle = vgrad(ctx, y0 - 5, y0 + h + 5, [[0, '#2b3a63'], [1, '#141d3a']]);
+  ctx.fillStyle = vgrad(ctx, y0 - 5, y0 + h + 5, [[0, TH.plat[0]], [1, TH.plat[1]]]);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(160,185,235,0.35)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.strokeStyle = TH.platEdge; ctx.lineWidth = 1.5; ctx.stroke();
   for (let i = 0; i < 4; i++) {
     const cx = G.BOX_CX(i);
     const st = game.stacks[i];
@@ -848,9 +907,9 @@ function drawBoxSlots(ctx, game) {
     ctx.save();
     ctx.translate(cx, 0);
     roundRect(ctx, x0, y0, w, h, 16);
-    ctx.fillStyle = vgrad(ctx, y0, y0 + h, [[0, 'rgba(4,8,22,0.85)'], [1, 'rgba(4,8,22,0.45)']]);
+    ctx.fillStyle = vgrad(ctx, y0, y0 + h, [[0, TH.slot[0]], [1, TH.slot[1]]]);
     ctx.fill();
-    ctx.strokeStyle = has ? 'rgba(150,180,240,0.4)' : 'rgba(150,180,240,0.15)';
+    ctx.strokeStyle = has ? TH.slotEdge[0] : TH.slotEdge[1];
     ctx.lineWidth = 1.5; ctx.stroke();
     // блик по нижнему краю паза
     ctx.strokeStyle = 'rgba(255,255,255,0.12)';
@@ -931,7 +990,7 @@ function drawBoxes(ctx, game, t) {
       ctx.translate(0, -G.BOX_H / 2);
       paintBox(ctx, color, DUMMY_BOX, t, true);
       ctx.globalAlpha = a * (0.03 + 0.06 * depth);
-      ctx.fillStyle = '#040a1c';
+      ctx.fillStyle = TH.shade;
       roundRect(ctx, -G.BOX_W / 2, 0, G.BOX_W, G.BOX_H, 17);
       ctx.fill();
       ctx.restore();
@@ -944,11 +1003,44 @@ function drawBoxes(ctx, game, t) {
 
 function drawFlyers(ctx, game) {
   for (const f of game.flyers) {
+    const at = (p) => {
+      const e = easeOut(p);
+      return {
+        x: f.x0 + (f.x1 - f.x0) * e,
+        y: f.y0 + (f.y1 - f.y0) * e - Math.sin(p * Math.PI) * 12,
+        r: G.MARBLE_R + (G.BOX_R - G.MARBLE_R) * p,
+      };
+    };
     const p = Math.min(1, f.t / f.dur);
-    const e = easeOut(p);
-    const x = f.x0 + (f.x1 - f.x0) * e;
-    const y = f.y0 + (f.y1 - f.y0) * e - Math.sin(p * Math.PI) * 12;
-    drawMarble(ctx, f.color, x, y, G.MARBLE_R + (G.BOX_R - G.MARBLE_R) * p, 1, false);
+    // короткий светящийся хвост
+    for (let k = 3; k >= 1; k--) {
+      const q = p - k * 0.07;
+      if (q <= 0) continue;
+      const g = at(q);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.16 * (4 - k);
+      ctx.fillStyle = col(f.color).lt;
+      ctx.beginPath(); ctx.arc(g.x, g.y, g.r * (1 - k * 0.12), 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    const c = at(p);
+    drawMarble(ctx, f.color, c.x, c.y, c.r, 1, false);
+  }
+}
+
+function drawConfetti(ctx, game) {
+  for (const c of game.confetti) {
+    const k = col(c.color);
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.rot);
+    ctx.scale(1, Math.abs(Math.cos(c.phase)) * 0.8 + 0.2);
+    ctx.fillStyle = k.base;
+    ctx.fillRect(-c.w / 2, -c.h / 2, c.w, c.h);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(-c.w / 2, -c.h / 2, c.w, c.h / 2.5);
+    ctx.restore();
   }
 }
 
