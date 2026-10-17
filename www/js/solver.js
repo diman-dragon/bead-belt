@@ -96,7 +96,7 @@ function moves(s, level) {
   return out;
 }
 
-function apply(s, level, stacks, col) {
+export function apply(s, level, stacks, col) {
   const n = clone(s);
   const t = level.columns[col][n.heads[col]];
   n.heads[col]++;
@@ -106,7 +106,7 @@ function apply(s, level, stacks, col) {
   return n;
 }
 
-function startState(level, stacks) {
+export function startState(level, stacks) {
   const s0 = initialState(level, stacks);
   settle(s0, stacks);
   return s0;

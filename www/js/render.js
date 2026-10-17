@@ -5,13 +5,17 @@ import { BOX_SIZE } from './levels.js';
 import { ENTER_DUR, POP_DUR, TRAY_LEAVE } from './game.js';
 
 // hl — блик, lt — свет, base — основной тон, dk — тень, deep — самая тёмная кромка
+// Неоновая палитра «под AMOLED»: чистые насыщенные оттенки, разнесённые по кругу (~55–75° друг от друга).
+// Ключ O — бирюзовый (раньше был оранжевым: слишком похож на красный и жёлтый).
 export const COLORS = {
-  R: { hl: '#ffe3e8', lt: '#ff7d92', base: '#ff2d55', dk: '#d6143c', deep: '#7c0a22' },
-  B: { hl: '#e4f1ff', lt: '#70c2ff', base: '#1f8cff', dk: '#1057d8', deep: '#082b7a' },
-  G: { hl: '#e2ffea', lt: '#6cff9c', base: '#1ae062', dk: '#0aa940', deep: '#055c23' },
-  Y: { hl: '#fffcd2', lt: '#ffef58', base: '#ffd500', dk: '#e49400', deep: '#8c5100' },
-  P: { hl: '#f2e4ff', lt: '#c98cff', base: '#a34cff', dk: '#7427d8', deep: '#3e1282' },
-  O: { hl: '#ffe9d3', lt: '#ffaf5e', base: '#ff8b00', dk: '#d25500', deep: '#7b3100' },
+  R: { hl: '#ff9aa6', lt: '#ff4560', base: '#ff0a2e', dk: '#b5001c', deep: '#5a0010' },
+  Y: { hl: '#fff98a', lt: '#ffee2e', base: '#ffe100', dk: '#b8a800', deep: '#585000' },
+  G: { hl: '#8affb0', lt: '#2dff7c', base: '#00e65a', dk: '#009a3a', deep: '#004d1c' },
+  O: { hl: '#8af4ff', lt: '#2ee9ff', base: '#00d4f5', dk: '#0090b8', deep: '#00465c' },
+  B: { hl: '#9db4ff', lt: '#4d73ff', base: '#1f45ff', dk: '#0d28c4', deep: '#060f66' },
+  P: { hl: '#f59cff', lt: '#e84bff', base: '#d010ff', dk: '#8e00b8', deep: '#46005e' },
+  // «туман»: скрытый лоток/коробка (цвет неизвестен)
+  X: { hl: '#8d9bc4', lt: '#667399', base: '#46517a', dk: '#323b5e', deep: '#1a2040' },
 };
 const col = (k) => COLORS[k] || COLORS.R;
 
@@ -311,7 +315,7 @@ function paintTray(ctx, key, w, h, o) {
   ctx.fill();
   ctx.save();
   ctx.clip();
-  ctx.fillStyle = hgrad(ctx, -t, t, [[0, 'rgba(255,255,255,0.34)'], [0.28, 'rgba(255,255,255,0)'], [0.72, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.24)']]);
+  ctx.fillStyle = hgrad(ctx, -t, t, [[0, 'rgba(255,255,255,0.14)'], [0.28, 'rgba(255,255,255,0)'], [0.72, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.26)']]);
   ctx.fillRect(-t, 0, w, h);
   // нижняя тень
   ctx.fillStyle = vgrad(ctx, h * 0.7, h, [[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.18)']]);
@@ -325,19 +329,26 @@ function paintTray(ctx, key, w, h, o) {
   ctx.globalAlpha /= 0.85;
 
   // блик по верхней кромке
-  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.42)';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(-t + 15, 1.6);
   ctx.lineTo(t - 15, 1.6);
   ctx.stroke();
 
+  if (key === 'X') {
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = '800 15px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('?', 0, 12);
+    return;
+  }
   if (o.simple) return;
 
   // ёмкость: тёмная чаша с «бортиком»
   const wx = -t + 10, wy = 10, ww = w - 20, wh = h * 0.58;
   roundRect(ctx, wx - 2, wy - 2, ww + 4, wh + 5, 13);
-  ctx.fillStyle = vgrad(ctx, wy, wy + wh, [[0, 'rgba(255,255,255,0.55)'], [1, 'rgba(255,255,255,0.15)']]);
+  ctx.fillStyle = vgrad(ctx, wy, wy + wh, [[0, 'rgba(255,255,255,0.3)'], [1, 'rgba(255,255,255,0.08)']]);
   ctx.fill();
   roundRect(ctx, wx, wy, ww, wh, 11);
   ctx.fillStyle = vgrad(ctx, wy, wy + wh, [[0, k.deep], [0.55, k.dk], [1, k.dk]]);
@@ -410,7 +421,7 @@ function drawTrays(ctx, game, t) {
       ctx.rotate(rot);
       ctx.scale(sx * r.scale, sy * r.scale);
       ctx.translate(0, -G.TRAY_H / 2);
-      paintTray(ctx, tray.color, G.TRAY_W, G.TRAY_H, {
+      paintTray(ctx, (d === 0 || d <= game.fog.top) ? tray.color : 'X', G.TRAY_W, G.TRAY_H, {
         left: tray.left, n: tray.n, front, simple: !front && depth > 1.2, glow,
       });
       if (!front) {
@@ -650,7 +661,7 @@ function drawBeltBase(ctx, game, t) {
 function drawBeams(ctx, game) {
   for (const b of game.boxes) {
     if (!b || b.done) continue;
-    const p = Math.min(1, Math.max(0, b.enterT / ENTER_DUR));
+    const p = b.fromStack ? 1 : Math.min(1, Math.max(0, b.enterT / ENTER_DUR));
     if (p <= 0) continue;
     const k = col(b.color);
     const cx = G.BOX_CX(b.i);
@@ -710,7 +721,7 @@ function paintBox(ctx, key, b, t, simple = false) {
   ctx.save();
   roundRect(ctx, x0, 0, w, h, 17);
   ctx.clip();
-  ctx.fillStyle = hgrad(ctx, x0, x0 + w, [[0, 'rgba(255,255,255,0.36)'], [0.25, 'rgba(255,255,255,0)'], [0.75, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.24)']]);
+  ctx.fillStyle = hgrad(ctx, x0, x0 + w, [[0, 'rgba(255,255,255,0.15)'], [0.25, 'rgba(255,255,255,0)'], [0.75, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.26)']]);
   ctx.fillRect(x0, 0, w, h);
   ctx.fillStyle = vgrad(ctx, h * 0.72, h, [[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.2)']]);
   ctx.fillRect(x0, h * 0.72, w, h * 0.28);
@@ -725,15 +736,21 @@ function paintBox(ctx, key, b, t, simple = false) {
   ctx.strokeStyle = k.deep;
   ctx.lineWidth = 2.4;
   roundRect(ctx, x0, 0, w, h, 17); ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
   ctx.lineWidth = 1.6;
   roundRect(ctx, x0 + 2.2, 2.2, w - 4.4, h - 4.4, 15); ctx.stroke();
+  if (key === 'X') {
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = '800 13px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('?', 0, h - 8);
+  }
   if (simple) return;
 
   // панель с гнёздами
   const px = x0 + 6, py = 10, pw = w - 12, ph = 52;
   roundRect(ctx, px - 1.5, py - 1.5, pw + 3, ph + 4, 13);
-  ctx.fillStyle = vgrad(ctx, py, py + ph, [[0, 'rgba(0,0,0,0.5)'], [1, 'rgba(255,255,255,0.45)']]);
+  ctx.fillStyle = vgrad(ctx, py, py + ph, [[0, 'rgba(0,0,0,0.5)'], [1, 'rgba(255,255,255,0.22)']]);
   ctx.fill();
   roundRect(ctx, px, py, pw, ph, 11.5);
   ctx.fillStyle = vgrad(ctx, py, py + ph, [[0, k.deep], [1, k.dk]]);
@@ -788,7 +805,7 @@ function paintBox(ctx, key, b, t, simple = false) {
   ctx.save();
   roundRect(ctx, x0, 0, w, h, 17); ctx.clip();
   const gg = ctx.createLinearGradient(0, 0, 0, 22);
-  gg.addColorStop(0, 'rgba(255,255,255,0.5)');
+  gg.addColorStop(0, 'rgba(255,255,255,0.26)');
   gg.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = gg;
   ctx.beginPath();
@@ -842,19 +859,67 @@ function drawBoxSlots(ctx, game) {
   }
 }
 
+function drawOneBox(ctx, game, b, i, t) {
+  const cx = G.BOX_CX(i);
+  const adv = game.stackAdv[i] || 0;
+  const p = b.fromStack ? 1 : clamp01(b.enterT / ENTER_DUR);
+  let alpha = 1, dy = 0, sc = 1, sy = 1;
+  if (b.fromStack && !b.done) {
+    // выдвигается вперёд из стопки
+    dy = STACK_DY * adv;
+    sc = Math.pow(STACK_SC, adv);
+  } else if (!b.fromStack && p < 1) {
+    const e = easeOutBack(p);
+    dy = (1 - e) * 70;
+    sc = 0.78 + 0.22 * Math.min(1, e);
+    sy = 1 + (e > 1 ? (e - 1) * 0.5 : 0);
+    alpha = clamp01(p * 3.2);
+  }
+  if (b.done) {
+    const q = clamp01(b.popT / POP_DUR);
+    if (q < 0.3) {
+      sc = 1 + 0.15 * Math.sin((q / 0.3) * Math.PI * 0.5);
+    } else {
+      const r = (q - 0.3) / 0.7;
+      sc = 1.15 - 0.4 * r;
+      dy = r * r * 80;
+      alpha = 1 - r * r;
+    }
+  }
+  // кольцо-вспышка при посадке коробки
+  if (b.flash > 0 && !b.done) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = col(b.color).lt;
+    ctx.globalAlpha = b.flash * 0.7;
+    ctx.lineWidth = 3;
+    const rr = 30 + (1 - b.flash) * 30;
+    ctx.beginPath(); ctx.ellipse(cx, G.BOX_TOP + G.BOX_H + 4, rr, rr * 0.28, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(cx, G.BOX_TOP + G.BOX_H / 2 + dy);
+  ctx.scale(sc, sc * sy);
+  ctx.translate(0, -G.BOX_H / 2);
+  paintBox(ctx, b.color, b, t);
+  ctx.restore();
+}
+
 function drawBoxes(ctx, game, t) {
   drawBoxSlots(ctx, game);
   game.boxes.forEach((b, i) => {
-    if (!b || b.enterT < 0) return; // коробка ещё ждёт своей очереди на появление
     const cx = G.BOX_CX(i);
     const adv = game.stackAdv[i] || 0;
-    const p = b.fromStack ? 1 : clamp01(b.enterT / ENTER_DUR);
+    const p = !b || b.fromStack ? 1 : clamp01(b.enterT / ENTER_DUR);
+    if (b && b.enterT < 0) return; // коробка ещё ждёт своей очереди на появление
 
-    // стопка за активной коробкой: две следующие, дальние первыми
+    // стопка за активной коробкой: две следующие, дальние первыми. За туманом — «?»
     const st = game.stacks[i];
     for (let d = 2; d >= 1; d--) {
-      const color = st[d - 1];
-      if (!color) continue;
+      const real = st[d - 1];
+      if (!real) continue;
+      const color = d <= game.fog.bottom ? real : 'X';
       const depth = d + adv;
       const a = (depth > 2 ? clamp01(3 - depth) : 1) * p;
       if (a <= 0) continue;
@@ -871,50 +936,10 @@ function drawBoxes(ctx, game, t) {
       ctx.fill();
       ctx.restore();
     }
-
-    // активная коробка
-    let alpha = 1, dy = 0, sc = 1, sy = 1;
-    if (b.fromStack) {
-      // выдвигается вперёд из стопки
-      dy = STACK_DY * adv;
-      sc = Math.pow(STACK_SC, adv);
-    } else if (p < 1) {
-      const e = easeOutBack(p);
-      dy = (1 - e) * 70;
-      sc = 0.78 + 0.22 * Math.min(1, e);
-      sy = 1 + (e > 1 ? (e - 1) * 0.5 : 0);
-      alpha = clamp01(p * 3.2);
-    }
-    if (b.done) {
-      const q = clamp01(b.popT / POP_DUR);
-      if (q < 0.3) {
-        sc = 1 + 0.15 * Math.sin((q / 0.3) * Math.PI * 0.5);
-      } else {
-        const r = (q - 0.3) / 0.7;
-        sc = 1.15 - 0.4 * r;
-        dy = r * r * 80;
-        alpha = 1 - r * r;
-      }
-    }
-    // кольцо-вспышка при посадке коробки
-    if (b.flash > 0 && !b.done) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = col(b.color).lt;
-      ctx.globalAlpha = b.flash * 0.7;
-      ctx.lineWidth = 3;
-      const rr = 30 + (1 - b.flash) * 30;
-      ctx.beginPath(); ctx.ellipse(cx, G.BOX_TOP + G.BOX_H + 4, rr, rr * 0.28, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.restore();
-    }
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.translate(cx, G.BOX_TOP + G.BOX_H / 2 + dy);
-    ctx.scale(sc, sc * sy);
-    ctx.translate(0, -G.BOX_H / 2);
-    paintBox(ctx, b.color, b, t);
-    ctx.restore();
+    if (b) drawOneBox(ctx, game, b, i, t);
   });
+  // уезжающие заполненные коробки — поверх новых
+  for (const b of game.leaving) drawOneBox(ctx, game, b, b.i, t);
 }
 
 function drawFlyers(ctx, game) {

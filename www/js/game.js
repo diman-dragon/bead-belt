@@ -28,7 +28,9 @@ export class Game {
     this.colAdv = this.cols.map(() => 0);   // 1 -> 0: лотки выдвигаются вперёд
     this.bin = new Bin();
     this.stacks = boxStacks(level);          // за активной коробкой в каждой стопке лежат следующие
-    this.stackAdv = this.stacks.map(() => 0); // 1 -> 0: стопка выдвигается вперёд
+    this.stackAdv = this.stacks.map(() => 0);
+    this.leaving = [];                       // заполненные коробки, которые уезжают (на их месте уже стоит следующая)
+    this.fog = { top: 2, bottom: 2, ...(level.fog || {}) }; // сколько следующих лотков/коробок видно заранее // 1 -> 0: стопка выдвигается вперёд
     this.boxes = [];
     for (let i = 0; i < ACTIVE_BOXES; i++) {
       const c = this.stacks[i].shift();
@@ -50,7 +52,8 @@ export class Game {
   }
 
   boxReady(b) {
-    return b && !b.done && b.enterT >= ENTER_DUR * 0.7;
+    // коробка из стопки готова брать шарики сразу: пока старая уезжает, новая уже работает
+    return b && !b.done && (b.fromStack || b.enterT >= ENTER_DUR * 0.7);
   }
 
   get pending() {
@@ -168,6 +171,7 @@ export class Game {
           const dest = G.boxSlotPos(b.i, b.f);
           const k = b.f;
           b.f++;
+          if (b.f >= BOX_SIZE) this.retire(b.i); // набрала всё — сразу уступает место следующей
           this.flyers.push({
             color: m.color, box: b, k,
             x0: p.x, y0: p.y, x1: dest.x, y1: dest.y, t: 0, dur: FLY_TO_BOX,
@@ -195,6 +199,17 @@ export class Game {
     for (const m of this.slots) if (m && m.drop > 0) m.drop = Math.max(0, m.drop - dt / DROP_TIME);
   }
 
+  // Заполненная коробка (все 3 шарика уже летят к ней) уезжает, а следующая из стопки встаёт на место МГНОВЕННО —
+  // иначе шарики другого цвета, идущие вплотную за последним, проскакивали бы мимо во время анимации ухода.
+  retire(i) {
+    const b = this.boxes[i];
+    if (!b) return;
+    this.leaving.push(b);
+    const next = this.stacks[i].shift();
+    this.boxes[i] = next ? this.makeBox(next, i, 0, true) : null;
+    if (next) this.stackAdv[i] = 1;
+  }
+
   updateFlyers(dt) {
     for (let k = this.flyers.length - 1; k >= 0; k--) {
       const f = this.flyers[k];
@@ -216,29 +231,29 @@ export class Game {
     }
   }
 
+  updateBox(b, i, dt) {
+    if (b.enterT < ENTER_DUR) {
+      b.enterT += dt;
+      if (b.enterT >= ENTER_DUR && !b.landed) {
+        b.landed = true;
+        b.flash = 0.6;
+        this.burst(G.BOX_CX(i), G.BOX_TOP + G.BOX_H, b.color, 8, 60);
+        this.emit('boxIn', {});
+      }
+    }
+    if (b.flash > 0) b.flash = Math.max(0, b.flash - dt * 2.4);
+    for (let k = 0; k < 3; k++) if (b.bump[k] > 0) b.bump[k] = Math.max(0, b.bump[k] - dt * 4.5);
+    if (b.done) b.popT += dt;
+  }
+
   updateBoxes(dt) {
     for (let i = 0; i < this.boxes.length; i++) {
-      const b = this.boxes[i];
-      if (!b) continue;
-      if (b.enterT < ENTER_DUR) {
-        b.enterT += dt;
-        if (b.enterT >= ENTER_DUR && !b.landed) {
-          b.landed = true;
-          b.flash = 0.6;
-          this.burst(G.BOX_CX(i), G.BOX_TOP + G.BOX_H, b.color, 8, 60);
-          this.emit('boxIn', {});
-        }
-      }
-      if (b.flash > 0) b.flash = Math.max(0, b.flash - dt * 2.4);
-      for (let k = 0; k < 3; k++) if (b.bump[k] > 0) b.bump[k] = Math.max(0, b.bump[k] - dt * 4.5);
-      if (b.done) {
-        b.popT += dt;
-        if (b.popT >= POP_DUR) {
-          const next = this.stacks[i].shift();
-          this.boxes[i] = next ? this.makeBox(next, i, 0, true) : null;
-          if (next) this.stackAdv[i] = 1;
-        }
-      }
+      if (this.boxes[i]) this.updateBox(this.boxes[i], i, dt);
+    }
+    for (let k = this.leaving.length - 1; k >= 0; k--) {
+      const b = this.leaving[k];
+      this.updateBox(b, b.i, dt);
+      if (b.done && b.popT >= POP_DUR) this.leaving.splice(k, 1);
     }
   }
 
@@ -293,7 +308,7 @@ export class Game {
 
   checkEnd(dt) {
     const boxesLeft = this.boxes.some(Boolean) || this.stacks.some((st) => st.length > 0);
-    if (!boxesLeft && this.flyers.length === 0) {
+    if (!boxesLeft && this.flyers.length === 0 && this.leaving.length === 0) {
       this.state = 'won';
       this.endT = 0;
       this.emit('win', {});
@@ -301,8 +316,8 @@ export class Game {
     }
 
     const full = this.occupied >= this.n;
-    const busy = this.flyers.length > 0 ||
-      this.boxes.some((b) => b && (b.done || b.enterT < ENTER_DUR));
+    const busy = this.flyers.length > 0 || this.leaving.length > 0 ||
+      this.boxes.some((b) => b && !b.fromStack && b.enterT < ENTER_DUR);
     const take = this.canTake();
     let stuck = false;
     if (!busy && !take) {
