@@ -405,7 +405,8 @@ function paintTray(ctx, key, w, h, o) {
   if (o.simple) return;
 
   // ёмкость: тёмная чаша с «бортиком»
-  const wx = -t + 10, wy = 10, ww = w - 20, wh = h * 0.58;
+  const big = o.n > 6; // три ряда (лоток на 9)
+  const wx = -t + 10, wy = 10, ww = w - 20, wh = h * (big ? 0.68 : 0.58);
   roundRect(ctx, wx - 2, wy - 2, ww + 4, wh + 5, 13);
   ctx.fillStyle = vgrad(ctx, wy, wy + wh, [[0, 'rgba(255,255,255,0.3)'], [1, 'rgba(255,255,255,0.08)']]);
   ctx.fill();
@@ -423,7 +424,7 @@ function paintTray(ctx, key, w, h, o) {
   // шарики
   const n = o.n;
   const rows = Math.ceil(n / 3);
-  const rowGap = 19;
+  const rowGap = big ? 17 : 19;
   const y0 = wy + wh / 2 - ((rows - 1) * rowGap) / 2 + 1;
   for (let i = 0; i < o.left; i++) {
     const r = Math.floor(i / 3);
@@ -431,7 +432,7 @@ function paintTray(ctx, key, w, h, o) {
     const c = i % 3;
     const cx = (c - (inRow - 1) / 2) * 22;
     const cy = y0 + r * rowGap;
-    drawMarble(ctx, key, cx, cy, G.TRAY_R, 1, false);
+    drawMarble(ctx, key, cx, cy, big ? G.TRAY_R * 0.93 : G.TRAY_R, 1, false);
   }
 
   // передняя панель: декоративные полоски
