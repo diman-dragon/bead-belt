@@ -13,7 +13,7 @@
   --ink: #eef3ff; --muted: #8e9bbd;
   --glass: rgba(255, 255, 255, 0.07); --glass-b: rgba(255, 255, 255, 0.14); --glass-act: rgba(255, 255, 255, 0.18);
   --card-a: #121b33; --card-b: #070b17; --card-edge: rgba(255, 255, 255, 0.12);
-  --overlay: rgba(0, 0, 0, 0.74); --overlay-menu: rgba(0, 0, 0, 0.5);
+  --overlay: rgba(0, 0, 0, 0.74); --overlay-menu: rgba(0, 0, 0, 0.84);
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.7);
   --blob-a: rgba(56, 130, 255, 0.28); --blob-b: rgba(190, 40, 255, 0.2); --blob-c: rgba(0, 220, 190, 0.16);
   --on-accent: #04283a; --track: rgba(255, 255, 255, 0.16); --danger: #ff5d73;
@@ -24,7 +24,7 @@
   --ink: #101a38; --muted: #5a688c;
   --glass: rgba(255, 255, 255, 0.7); --glass-b: rgba(40, 60, 120, 0.2); --glass-act: rgba(255, 255, 255, 0.95);
   --card-a: #ffffff; --card-b: #e6ecfa; --card-edge: rgba(40, 60, 120, 0.16);
-  --overlay: rgba(205, 217, 243, 0.78); --overlay-menu: rgba(225, 233, 250, 0.55);
+  --overlay: rgba(205, 217, 243, 0.78); --overlay-menu: rgba(228, 236, 252, 0.88);
   --shadow: 0 18px 44px rgba(40, 60, 120, 0.28);
   --blob-a: rgba(80, 150, 255, 0.32); --blob-b: rgba(210, 90, 255, 0.2); --blob-c: rgba(0, 210, 170, 0.2);
   --on-accent: #052a40; --track: rgba(40, 60, 120, 0.18); --danger: #e0244a;
@@ -36,14 +36,16 @@ html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: radial-gradient(120% 90% at 50% 0%, var(--bg1), var(--bg2));
+  background:
+    radial-gradient(70% 45% at 12% 8%, var(--blob-a), transparent 70%),
+    radial-gradient(70% 45% at 92% 96%, var(--blob-b), transparent 70%),
+    radial-gradient(120% 90% at 50% 0%, var(--bg1), var(--bg2));
   color: var(--ink);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   user-select: none;
   -webkit-user-select: none;
   touch-action: manipulation;
   overscroll-behavior: none;
-  transition: background-color .3s, color .3s;
 }
 
 #app {
@@ -54,17 +56,6 @@ html, body {
   padding-left: var(--sal);
   padding-right: var(--sar);
 }
-
-/* мягкие цветные «туманности» за игрой */
-#bgfx { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
-#bgfx::before, #bgfx::after {
-  content: ''; position: absolute; width: 130vmax; height: 130vmax; border-radius: 50%;
-  filter: blur(40px); will-change: transform;
-}
-#bgfx::before { left: -70vmax; top: -50vmax; background: radial-gradient(circle, var(--blob-a), transparent 62%); animation: drift1 26s ease-in-out infinite alternate; }
-#bgfx::after { right: -80vmax; bottom: -60vmax; background: radial-gradient(circle, var(--blob-b), transparent 60%), radial-gradient(circle at 20% 80%, var(--blob-c), transparent 55%); animation: drift2 32s ease-in-out infinite alternate; }
-@keyframes drift1 { to { transform: translate(18vmax, 14vmax) scale(1.12); } }
-@keyframes drift2 { to { transform: translate(-16vmax, -12vmax) scale(1.1); } }
 
 #hud, #stage { position: relative; z-index: 1; }
 
@@ -80,7 +71,7 @@ html, body {
 #hudMid { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
 #levelLabel { font-weight: 800; letter-spacing: 0.03em; font-size: 17px; }
 #prog { width: min(46vw, 170px); height: 6px; border-radius: 99px; background: var(--track); overflow: hidden; }
-#progBar { display: block; height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, #00e0ff, #2ee66a, #ffe100); transition: width .45s cubic-bezier(.3, 1.2, .4, 1); }
+#progBar { display: block; height: 100%; width: 100%; border-radius: 99px; background: linear-gradient(90deg, #00e0ff, #2ee66a, #ffe100); transform-origin: left center; transform: scaleX(0); transition: transform .45s cubic-bezier(.3, 1.2, .4, 1); will-change: transform; }
 .hud-right { display: flex; gap: 6px; }
 
 .icon-btn {
@@ -88,7 +79,6 @@ html, body {
   display: grid; place-items: center;
   border: 1px solid var(--glass-b); border-radius: 14px;
   background: var(--glass);
-  backdrop-filter: blur(8px);
   color: var(--ink);
   transition: transform .12s, background .15s, color .15s, box-shadow .15s;
 }
@@ -105,7 +95,7 @@ html, body {
   min-height: 0;
   padding-bottom: var(--sab);
 }
-#cv { position: absolute; inset: 0; width: 100%; height: calc(100% - var(--sab)); display: block; touch-action: none; }
+#cv { position: absolute; inset: 0; contain: strict; width: 100%; height: calc(100% - var(--sab)); display: block; touch-action: none; }
 
 #toast {
   position: fixed; left: 50%; top: calc(max(var(--sat), 24px) + 56px);
@@ -113,7 +103,7 @@ html, body {
   padding: 9px 16px; border-radius: 999px;
   background: var(--card-b); border: 1px solid var(--card-edge); color: var(--ink);
   font-weight: 700; font-size: 14px; white-space: nowrap;
-  box-shadow: var(--shadow);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
   opacity: 0; pointer-events: none; z-index: 30;
   transition: opacity .18s, transform .18s;
 }
@@ -125,11 +115,10 @@ html, body {
   display: grid; place-items: center;
   padding: calc(var(--sat) + 16px) 16px calc(var(--sab) + 16px);
   background: var(--overlay);
-  backdrop-filter: blur(6px);
   z-index: 10;
   animation: fade-in .22s ease-out;
 }
-.overlay-menu { background: var(--overlay-menu); backdrop-filter: blur(3px); }
+.overlay-menu { background: var(--overlay-menu); }
 .overlay[hidden] { display: none; }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes pop-in { from { opacity: 0; transform: translateY(14px) scale(.94); } }
@@ -180,7 +169,7 @@ html, body {
 .logo i {
   width: 30px; height: 30px; border-radius: 50%;
   background: radial-gradient(circle at 33% 28%, #fffc, transparent 36%), radial-gradient(circle at 70% 82%, #fff5, transparent 40%), var(--c);
-  box-shadow: 0 0 14px color-mix(in srgb, var(--c) 60%, transparent), inset 0 -4px 7px rgba(0, 0, 0, .35);
+  box-shadow: inset 0 -4px 7px rgba(0, 0, 0, .35);
   animation: bob 1.5s ease-in-out infinite; animation-delay: var(--d);
 }
 .logo.small i { width: 24px; height: 24px; }
@@ -216,7 +205,6 @@ html, body {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
   min-height: 74px; border-radius: 18px; font-size: 12.5px; font-weight: 700;
   border: 1px solid var(--glass-b); background: var(--glass); color: var(--ink);
-  backdrop-filter: blur(8px);
   transition: transform .12s, background .15s;
 }
 .tile svg { color: var(--accent); }
@@ -278,7 +266,7 @@ html, body {
 @keyframes pop-big { from { transform: scale(0) rotate(-40deg); } }
 
 @media (prefers-reduced-motion: reduce) {
-  #bgfx::before, #bgfx::after, .logo i { animation: none; }
+  .logo i { animation: none; }
   .overlay, .card, .menu { animation: none; }
 }
 @media (max-height: 640px) {

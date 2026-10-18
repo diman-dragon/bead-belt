@@ -1,13 +1,13 @@
 {
   "name": "bead-belt",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "private": true,
   "type": "module",
   "description": "Bead Belt — головоломка с шариками и конвейером (Capacitor, Android)",
   "scripts": {
     "validate": "node tools/validate-levels.mjs",
     "simulate": "node tools/simulate.mjs",
-    "test": "npm run validate && npm run simulate && npm run version:check",
+    "test": "npm run validate && npm run simulate && npm run test:view && npm run version:check",
     "dev": "npx --yes serve www -l 5173",
     "bump": "node scripts/bump-version.mjs",
     "bump:sync": "node scripts/bump-version.mjs --sync",
@@ -17,7 +17,8 @@
     "android:open": "npx cap open android",
     "android:apk": "node scripts/init-android.mjs && cd android && ./gradlew assembleDebug assembleRelease",
     "assets": "npx capacitor-assets generate --android",
-    "check:android": "node scripts/check-android.mjs"
+    "check:android": "node scripts/check-android.mjs",
+    "test:view": "node tools/viewmodel-test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "latest",

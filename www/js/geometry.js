@@ -64,7 +64,6 @@ export const BOX_W = 80;
 export const BOX_H = 94;
 export const BOX_TOP = 416;
 export const BOX_CX = (i) => 54 + 84 * i;
-export const QUEUE_Y = 528;       // верх мини-коробок «ДАЛЕЕ»
 
 export function boxSlotPos(i, k) {
   return { x: BOX_CX(i) + (k - 1) * 22, y: BOX_TOP + 36 };
@@ -75,21 +74,25 @@ export function mod(a, m) {
   return ((a % m) + m) % m;
 }
 
-// Точка на пути по параметру s и направление движения (для рёбер ленты).
-export function pos(sRaw) {
+// Точка на пути по параметру s. posTo пишет результат в готовый объект — без выделений памяти в горячем цикле.
+export function posTo(out, sRaw) {
   const s = mod(sRaw, L);
   if (s < STRAIGHT) {
-    return { x: CX - HALF + s, y: CY - R };
-  }
-  if (s < STRAIGHT + ARC) {
+    out.x = CX - HALF + s; out.y = CY - R;
+  } else if (s < STRAIGHT + ARC) {
     const phi = (s - STRAIGHT) / R;
-    return { x: CX + HALF + R * Math.sin(phi), y: CY - R * Math.cos(phi) };
+    out.x = CX + HALF + R * Math.sin(phi); out.y = CY - R * Math.cos(phi);
+  } else if (s < 2 * STRAIGHT + ARC) {
+    out.x = CX + HALF - (s - STRAIGHT - ARC); out.y = CY + R;
+  } else {
+    const phi = (s - 2 * STRAIGHT - ARC) / R;
+    out.x = CX - HALF - R * Math.sin(phi); out.y = CY + R * Math.cos(phi);
   }
-  if (s < 2 * STRAIGHT + ARC) {
-    return { x: CX + HALF - (s - STRAIGHT - ARC), y: CY + R };
-  }
-  const phi = (s - 2 * STRAIGHT - ARC) / R;
-  return { x: CX - HALF - R * Math.sin(phi), y: CY + R * Math.cos(phi) };
+  return out;
+}
+
+export function pos(s) {
+  return posTo({ x: 0, y: 0 }, s);
 }
 
 // Нормаль (наружу) в точке пути — нужна для рёбер ленты.
