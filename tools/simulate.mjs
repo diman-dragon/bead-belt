@@ -7,7 +7,7 @@ import { Game } from '../www/js/game.js';
 import * as G from '../www/js/geometry.js';
 
 const DT = 1 / 30;
-const MAX_SECONDS = 240;
+const MAX_SECONDS = 600;
 
 // «Успокоилось»: всё высыпано, накопитель пуст, ничего не летит и ни одна коробка не может ничего взять.
 function settled(g) {

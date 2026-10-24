@@ -1,6 +1,6 @@
 {
   "name": "bead-belt",
-  "version": "0.2.4",
+  "version": "0.2.6",
   "private": true,
   "type": "module",
   "description": "Bead Belt — головоломка с шариками и конвейером (Capacitor, Android)",

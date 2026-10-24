@@ -21,8 +21,10 @@ for (const level of LEVELS.filter((_, i) => i % 15 === 0)) {
   const { solution } = solve(level);
   const queue = solution.slice();
   const g = new Game(level, () => {});
-  for (let step = 0; step < 30 * 120 && g.state === 'play'; step++) {
-    if (queue.length && g.emitters.length === 0 && g.bin.count === 0 && !g.flyers.length) {
+  for (let step = 0; step < 30 * 600 && g.state === 'play'; step++) {
+    if (queue.length && g.emitters.length === 0 && g.bin.count === 0 && !g.flyers.length &&
+        !g.canTake() && !g.slots.some((m) => m && m.drop > 0) && !g.leaving.length &&
+        !g.boxes.some((b) => b && !b.fromStack && b.enterT < 0.4)) { // как в simulate.mjs: ждём, пока всё успокоится
       const ci = queue[0];
       const r = G.trayRect(ci, 0);
       if (g.tap(r.cx, r.y + r.h / 2)) queue.shift();
