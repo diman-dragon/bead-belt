@@ -1,14 +1,13 @@
 {
   "version": "2.0.0",
   "tasks": [
-    { "label": "Игра в браузере (localhost:5173)", "type": "shell", "command": "npm run dev", "isBackground": true,
-      "problemMatcher": [], "group": "build" },
-    { "label": "Проверить уровни", "type": "shell", "command": "npm run validate", "problemMatcher": [], "group": "test" },
-    { "label": "Симуляция (боты)", "type": "shell", "command": "npm run simulate", "problemMatcher": [], "group": "test" },
-    { "label": "Все проверки", "type": "shell", "command": "npm test", "problemMatcher": [], "group": { "kind": "test", "isDefault": true } },
-    { "label": "Android: создать/обновить проект", "type": "shell", "command": "npm run android:init", "problemMatcher": [] },
-    { "label": "Android: синхронизировать www", "type": "shell", "command": "npm run android:sync", "problemMatcher": [] },
-    { "label": "Android: открыть в Android Studio", "type": "shell", "command": "npm run android:open", "problemMatcher": [] },
-    { "label": "Сгенерировать иконки и графику", "type": "shell", "command": "python3 tools/make-assets.py", "problemMatcher": [] }
+    { "label": "Тесты", "type": "shell", "command": "gradle testDebugUnitTest", "problemMatcher": [], "group": { "kind": "test", "isDefault": true } },
+    { "label": "Собрать debug APK", "type": "shell", "command": "gradle assembleDebug", "problemMatcher": [], "group": { "kind": "build", "isDefault": true } },
+    { "label": "Установить на телефон (adb)", "type": "shell", "command": "gradle installDebug", "problemMatcher": [] },
+    { "label": "Запустить на телефоне", "type": "shell", "command": "adb shell am start -n dev.beadbelt.game/.MainActivity", "problemMatcher": [] },
+    { "label": "Лог игры (adb logcat)", "type": "shell", "command": "adb logcat --pid=$(adb shell pidof -s dev.beadbelt.game)", "problemMatcher": [], "isBackground": true },
+    { "label": "Поднять версию", "type": "shell", "command": "python3 scripts/bump.py", "problemMatcher": [] },
+    { "label": "Создать Gradle Wrapper (один раз)", "type": "shell", "command": "gradle wrapper --gradle-version 8.10.2", "problemMatcher": [] },
+    { "label": "Очистить", "type": "shell", "command": "gradle clean", "problemMatcher": [] }
   ]
 }
