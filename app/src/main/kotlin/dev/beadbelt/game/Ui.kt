@@ -1,0 +1,68 @@
+package dev.beadbelt.game
+
+// идентификаторы нажимаемых элементов
+const val BTN_NONE = 0
+const val BTN_PLAY = 1
+const val BTN_LEVELS = 2
+const val BTN_SOUND = 3
+const val BTN_BACK = 4
+const val BTN_RESTART = 5
+const val BTN_ROCKET = 6
+const val BTN_RETURN = 7
+const val BTN_NEXT = 8
+const val BTN_MENU = 9
+const val BTN_RESUME = 10
+const val BTN_LEVEL = 1000      // BTN_LEVEL + номер уровня
+
+/** Раскладка экранов в логических координатах 360x640 — общая для рисования и для нажатий. */
+object Layout {
+    // меню
+    val MENU_PLAY = floatArrayOf(50f, 340f, 310f, 408f)
+    val MENU_LEVELS = floatArrayOf(50f, 424f, 310f, 476f)
+    const val MENU_SOUND_X = 180f
+    const val MENU_SOUND_Y = 530f
+
+    // кнопки HUD
+    const val HUD_L_X = 38f
+    const val HUD_R_X = 322f
+    const val HUD_Y = 40f
+    const val HUD_R = 22f
+    const val BOOST_R = 26f
+
+    // список уровней: сетка 5 в ряд с прокруткой
+    const val LV_COLS = 5
+    const val LV_X0 = 16f
+    const val LV_W = 56f
+    const val LV_H = 60f
+    const val LV_GAP_X = 12f
+    const val LV_PITCH = 72f
+    const val LV_TOP = 92f
+    const val LV_BOTTOM = 606f
+    val LV_ROWS = (LEVEL_COUNT + LV_COLS - 1) / LV_COLS
+    val LV_CONTENT = LV_ROWS * LV_PITCH
+
+    // итоговая карточка
+    val END_CARD = floatArrayOf(36f, 150f, 324f, 490f)
+    val END_NEXT = floatArrayOf(60f, 374f, 300f, 428f)
+    val END_MENU = floatArrayOf(60f, 440f, 300f, 478f)
+
+    // пауза
+    val PAUSE_BTN = floatArrayOf(60f, 300f, 300f, 356f)
+
+    fun inRect(r: FloatArray, x: Float, y: Float) = x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]
+    fun inCircle(x: Float, y: Float, cx: Float, cy: Float, r: Float): Boolean { val dx = x - cx; val dy = y - cy; return dx * dx + dy * dy <= r * r }
+
+    fun levelX(i: Int) = LV_X0 + (i % LV_COLS) * (LV_W + LV_GAP_X)
+    fun levelY(i: Int, scroll: Float) = LV_TOP + (i / LV_COLS) * LV_PITCH - scroll
+    fun maxScroll() = (LV_CONTENT - (LV_BOTTOM - LV_TOP) + 12f).coerceAtLeast(0f)
+}
+
+/** Состояние интерфейса, общее для ввода и рисования. */
+class Ui {
+    var pressId = BTN_NONE
+    var press = 0f
+    var clock = 0f
+    var scroll = 0f
+    var endT = 0f
+    fun pr(id: Int) = if (pressId == id) press else 0f
+}

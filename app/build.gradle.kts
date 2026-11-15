@@ -30,7 +30,8 @@ android {
     buildTypes {
         debug { signingConfig = signingConfigs.getByName("dev") }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true      // R8: меньше APK, быстрее старт
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("dev")
         }
     }

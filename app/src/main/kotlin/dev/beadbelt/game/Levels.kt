@@ -141,3 +141,16 @@ object Levels {
         error("Не удалось создать уровень $id")
     }
 }
+
+/** Кэш сгенерированных уровней: следующий уровень готовится в фоне, пока играешь текущий. */
+object LevelCache {
+    private val cache = java.util.concurrent.ConcurrentHashMap<Int, Level>()
+    private val pool = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "level-gen").also { it.isDaemon = true } }
+
+    fun get(id: Int): Level = cache.getOrPut(id.coerceIn(1, LEVEL_COUNT)) { Levels.make(id.coerceIn(1, LEVEL_COUNT)) }
+
+    fun prefetch(id: Int) {
+        val i = id.coerceIn(1, LEVEL_COUNT)
+        if (!cache.containsKey(i)) pool.execute { try { get(i) } catch (e: Exception) { /* не критично: уровень создастся при входе */ } }
+    }
+}

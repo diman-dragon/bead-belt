@@ -1,79 +1,24 @@
 package dev.beadbelt.game
 
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.cos
+import kotlin.math.atan2
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sin
-import kotlin.math.sqrt
-
-// Логические координаты поля 360x640 (потом масштабируются под экран).
-const val W = 360f
-const val H = 640f
-const val TRAY_Y = 186f
-const val BOX_Y = 528f
-const val BOX_W = 78f
-const val BOX_H = 92f
-const val BODY_R = 8.5f      // радиус шарика в воронке
-
-const val EV_TAP = 0
-const val EV_PICK = 1
-const val EV_POP = 2
-const val EV_WIN = 3
-const val EV_LOSE = 4
-const val EV_ROCKET = 5
-const val EV_UNLOCK = 6
-
-/** Овальный конвейер: сверху вправо, снизу влево (по часовой). */
-object Geo {
-    const val CX = 180f
-    const val CY = 392f
-    const val A = 100f      // полудлина прямой
-    const val R = 50f       // радиус дуги
-    val ARC = (PI * R).toFloat()
-    val L = 4 * A + 2 * ARC
-
-    fun point(p0: Float, out: FloatArray) {
-        var p = p0 % L
-        if (p < 0) p += L
-        when {
-            p < A -> { out[0] = CX + p; out[1] = CY - R }
-            p < A + ARC -> {
-                val a = -PI / 2 + (p - A) / R
-                out[0] = (CX + A + R * cos(a)).toFloat(); out[1] = (CY + R * sin(a)).toFloat()
-            }
-            p < 3 * A + ARC -> { out[0] = CX + A - (p - A - ARC); out[1] = CY + R }
-            p < 3 * A + 2 * ARC -> {
-                val a = PI / 2 + (p - 3 * A - ARC) / R
-                out[0] = (CX - A + R * cos(a)).toFloat(); out[1] = (CY + R * sin(a)).toFloat()
-            }
-            else -> { out[0] = CX - A + (p - 3 * A - 2 * ARC); out[1] = CY - R }
-        }
-    }
-}
-
-/** Стенки воронки (x1, y1, x2, y2): шарики из лотков падают сюда и скатываются к воротам над конвейером. */
-val WALLS = arrayOf(
-    floatArrayOf(12f, 120f, 12f, 250f), floatArrayOf(12f, 250f, 160f, 328f),
-    floatArrayOf(160f, 328f, 200f, 328f),
-    floatArrayOf(200f, 328f, 348f, 250f), floatArrayOf(348f, 250f, 348f, 120f),
-)
 
 class Tray(val c: Int, n0: Int, val arrow: Int = 0) { var n = n0; var d = 0f }   // d — отображаемая глубина
 class Box(val c: Int) { var n = 0; var res = 0; var pop = -1f; var enter = 1f; var locked = false }
 class Flyer(val c: Int, val x0: Float, val y0: Float, val box: Box, val boxIdx: Int, val hole: Int) { var t = 0f }
 class Leaving(val tray: Tray, val x: Float) { var t = 0f }
-class Spark(var x: Float, var y: Float, var vx: Float, var vy: Float, val c: Int) { var life = 1f }
-class Body(val c: Int, var x: Float, var y: Float) { var vx = 0f; var vy = 0f }
 class Spawn(val c: Int, val x: Float)
 class RocketFx(val boxIdx: Int) { var t = 0f }
+class Popup(val text: String, val x: Float, val y: Float, val c: Int) { var t = 0f }
 
 enum class State { PLAY, WON, LOST }
 
+/** Правила и симуляция без зависимостей от Android. */
 class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
     companion object {
-        const val SPEED = 110f
+        const val SPEED = 250f      // скорость ленты, логических единиц/с (было 110)
         const val POP_T = 0.5f
         const val FLY_T = 0.2f
         const val ROCKET_T = 0.55f
@@ -99,23 +44,30 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
     val hopper = ArrayList<Body>()
     val flyers = ArrayList<Flyer>()
     val leaving = ArrayList<Leaving>()
-    val sparks = ArrayList<Spark>()
     val rockets = ArrayList<RocketFx>()
+    val popups = ArrayList<Popup>()
+    val fx = Particles()
 
     var time = 0f
     var state = State.PLAY
     var done = 0
     val total = level.boxes.size
+    /** Тряска экрана: 0..1, сама затухает. */
+    var shake = 0f
+
+    private val physics = HopperPhysics(hopper)
+    private val pt = FloatArray(2)
     private var stuckT = 0f
     private var pickCombo = 0
     private var comboT = 0f
     private var spawnT = 0f
+    private var clinkT = 0f
     private var acc = 0f
     private val rnd = java.util.Random(level.id.toLong())
 
     init { cols.forEach { col -> col.forEachIndexed { i, t -> t.d = i.toFloat() } } }
 
-    val occupied get() = slots.count { it >= 0 }
+    val occupied: Int get() { var k = 0; for (c in slots) if (c >= 0) k++; return k }
     val progress get() = done.toFloat() / total
 
     fun ready(b: Box) = b.pop < 0f && b.enter < 0.35f && !b.locked
@@ -148,7 +100,13 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
 
     // ---------- бустеры ----------
 
-    private fun countColor(c: Int) = slots.count { it == c } + hopper.count { it.c == c } + spawnQ.count { it.c == c }
+    private fun countColor(c: Int): Int {
+        var k = 0
+        for (v in slots) if (v == c) k++
+        for (i in 0 until hopper.size) if (hopper[i].c == c) k++
+        for (s in spawnQ) if (s.c == c) k++
+        return k
+    }
 
     /** Ракета: через мгновение мгновенно «собирает» самую выгодную коробку, убирая её шарики с поля. */
     fun useRocket(): Boolean {
@@ -170,12 +128,15 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
     /** Убирает k шариков цвета c: с ленты, из воронки, из очереди, затем из лотков. */
     private fun removeMarbles(c: Int, k: Int) {
         var left = k
-        val pt = FloatArray(2)
         for (j in slots.indices) if (left > 0 && slots[j] == c) {
             Geo.point(phase + j * sp, pt); burst(pt[0], pt[1], c, 4); slots[j] = -1; left--
         }
-        val hi = hopper.iterator()
-        while (left > 0 && hi.hasNext()) { val b = hi.next(); if (b.c == c) { burst(b.x, b.y, c, 4); hi.remove(); left-- } }
+        var hi = hopper.size - 1
+        while (left > 0 && hi >= 0) {
+            val b = hopper[hi]
+            if (b.c == c) { burst(b.x, b.y, c, 4); hopper.removeAt(hi); left-- }
+            hi--
+        }
         val si = spawnQ.iterator()
         while (left > 0 && si.hasNext()) { if (si.next().c == c) { si.remove(); left-- } }
         for (col in cols) {
@@ -194,7 +155,6 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
         if (state != State.PLAY) return false
         val cnt = IntArray(COLOR_COUNT)
         var tot = 0
-        val pt = FloatArray(2)
         for (j in slots.indices) if (slots[j] >= 0 && tot < 8) {
             Geo.point(phase + j * sp, pt); burst(pt[0], pt[1], slots[j], 3)
             cnt[slots[j]]++; tot++; slots[j] = -1
@@ -208,23 +168,20 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
         return true
     }
 
-    private fun burst(x: Float, y: Float, c: Int, count: Int) {
-        repeat(count) {
-            val a = rnd.nextFloat() * 2f * PI.toFloat()
-            sparks.add(Spark(x, y, cos(a) * 90f, sin(a) * 90f - 60f, c))
-        }
-    }
+    private fun burst(x: Float, y: Float, c: Int, count: Int) = fx.burst(x, y, c, count, rnd)
 
     // ---------- симуляция ----------
 
     fun update(dt0: Float) {
         val dt = min(dt0, 1f / 30f)
         time += dt
-        for (col in cols) for ((i, t) in col.withIndex()) t.d += (i - t.d) * min(1f, dt * 12f)
-        for (l in leaving) l.t += dt * 3f
-        leaving.removeAll { it.t >= 1f }
-        for (s in sparks) { s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 500f * dt; s.life -= dt * 1.6f }
-        sparks.removeAll { it.life <= 0f }
+        for (col in cols) for (i in col.indices) { val t = col[i]; t.d += (i - t.d) * min(1f, dt * 12f) }
+        var li = leaving.size - 1
+        while (li >= 0) { val l = leaving[li]; l.t += dt * 3f; if (l.t >= 1f) leaving.removeAt(li); li-- }
+        var pi = popups.size - 1
+        while (pi >= 0) { val p = popups[pi]; p.t += dt; if (p.t >= 1f) popups.removeAt(pi); pi-- }
+        fx.update(dt)
+        shake = max(0f, shake - dt * 2.2f)
         comboT -= dt
         if (comboT <= 0f) pickCombo = 0
 
@@ -233,13 +190,21 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
             spawnT -= dt
             if (spawnT <= 0f && spawnQ.isNotEmpty()) {
                 val s = spawnQ.removeFirst()
-                hopper.add(Body(s.c, s.x + (rnd.nextFloat() - 0.5f) * 10f, TRAY_Y + 34f).also { it.vy = 120f })
-                spawnT = 0.05f
+                // шарики вываливаются из лотка с разбросом — рассыпаются веером
+                hopper.add(Body(s.c, s.x + (rnd.nextFloat() - 0.5f) * 14f, TRAY_Y + 34f).also { it.vy = 110f + rnd.nextFloat() * 70f; it.vx = (rnd.nextFloat() - 0.5f) * 110f })
+                spawnT = 0.04f
             }
             acc += dt
             var steps = 0
-            while (acc >= PH && steps < 6) { stepPhysics(PH); acc -= PH; steps++ }
+            physics.resetHit()
+            while (acc >= PH && steps < 6) { physics.step(PH); acc -= PH; steps++ }
             if (steps == 6) acc = 0f
+            clinkT -= dt
+            if (physics.hitSpeed > 130f && clinkT <= 0f) {     // сильный удар: блик и звонкий «цок»
+                fx.glint(physics.hitX, physics.hitY, rnd.nextInt(COLOR_COUNT), rnd)
+                onEvent(EV_CLINK, min(7, (physics.hitSpeed / 90f).toInt()))
+                clinkT = 0.09f
+            }
 
             val old = phase
             phase += SPEED * dt
@@ -247,7 +212,7 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
                 val prev = (old + j * sp) % Geo.L
                 val cur = (phase + j * sp) % Geo.L
                 if (cur < prev && slots[j] < 0) {
-                    val c = takeGate()
+                    val c = physics.takeGate()
                     if (c >= 0) { slots[j] = c; born[j] = time }
                 }
             }
@@ -255,22 +220,27 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
             pickup()
         }
 
-        val fi = flyers.iterator()
-        while (fi.hasNext()) {
-            val f = fi.next()
+        var fi = flyers.size - 1
+        while (fi >= 0) {
+            val f = flyers[fi]
             f.t += dt / FLY_T
             if (f.t >= 1f) {
                 f.box.res--; f.box.n++
+                fx.glint(boxX[f.boxIdx] + (f.hole - 1) * 22f, BOX_Y - 12f, f.c, rnd)
                 if (f.box.n == BOX && f.box.pop < 0f) startPop(f.box, f.boxIdx)
-                fi.remove()
+                flyers.removeAt(fi)
             }
+            fi--
         }
 
-        val ri = rockets.iterator()
-        while (ri.hasNext()) {
-            val r = ri.next()
+        var ri = rockets.size - 1
+        while (ri >= 0) {
+            val r = rockets[ri]
             r.t += dt / ROCKET_T
-            if (r.t >= 1f) { ri.remove(); applyRocket(r.boxIdx) }
+            val e = r.t.coerceIn(0f, 1f)
+            fx.burst(ROCKET_X + (boxX[r.boxIdx] - ROCKET_X) * e, BOOST_Y + (BOX_Y - BOOST_Y) * e, 6, 1, rnd, 25f)
+            if (r.t >= 1f) { rockets.removeAt(ri); applyRocket(r.boxIdx) }
+            ri--
         }
 
         for (i in 0 until SLOTS) {
@@ -291,8 +261,10 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
         }
 
         if (state == State.PLAY) {
-            if (done == total && flyers.isEmpty() && rockets.isEmpty()) { state = State.WON; onEvent(EV_WIN, 0) }
-            else checkStuck(dt)
+            if (done == total && flyers.isEmpty() && rockets.isEmpty()) {
+                state = State.WON; onEvent(EV_WIN, 0)
+                repeat(110) { fx.confetti(rnd, COLOR_COUNT) }
+            } else checkStuck(dt)
         }
     }
 
@@ -305,55 +277,7 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
         if (b.n == BOX && b.res == 0 && b.pop < 0f) startPop(b, idx)
     }
 
-    /** Шарик, лежащий на воротах воронки, выпускается на свободную ячейку конвейера. */
-    private fun takeGate(): Int {
-        var best = -1
-        var by = 0f
-        for ((i, b) in hopper.withIndex()) if (abs(b.x - 180f) < 24f && b.y > 308f && b.y > by) { best = i; by = b.y }
-        return if (best < 0) -1 else hopper.removeAt(best).c
-    }
-
-    /** Круги в воронке: гравитация, столкновения друг с другом и со стенками. */
-    private fun stepPhysics(h: Float) {
-        for (b in hopper) { b.vy += 1500f * h; b.x += b.vx * h; b.y += b.vy * h }
-        val m = 2f * BODY_R
-        repeat(3) {
-            for (i in 0 until hopper.size) {
-                val a = hopper[i]
-                for (j in i + 1 until hopper.size) {
-                    val b = hopper[j]
-                    var dx = b.x - a.x
-                    var dy = b.y - a.y
-                    val d2 = dx * dx + dy * dy
-                    if (d2 < m * m && d2 > 1e-6f) {
-                        val d = sqrt(d2); dx /= d; dy /= d
-                        val pen = (m - d) / 2f
-                        a.x -= dx * pen; a.y -= dy * pen; b.x += dx * pen; b.y += dy * pen
-                        val rv = (b.vx - a.vx) * dx + (b.vy - a.vy) * dy
-                        if (rv < 0f) { val imp = -rv * 0.55f; a.vx -= dx * imp; a.vy -= dy * imp; b.vx += dx * imp; b.vy += dy * imp }
-                    }
-                }
-                for (w in WALLS) {
-                    val ex = w[2] - w[0]; val ey = w[3] - w[1]
-                    val t = (((a.x - w[0]) * ex + (a.y - w[1]) * ey) / (ex * ex + ey * ey)).coerceIn(0f, 1f)
-                    val px = w[0] + ex * t; val py = w[1] + ey * t
-                    var dx = a.x - px; var dy = a.y - py
-                    val d2 = dx * dx + dy * dy
-                    if (d2 < BODY_R * BODY_R) {
-                        val d = sqrt(d2)
-                        if (d > 1e-4f) { dx /= d; dy /= d } else { dx = 0f; dy = -1f }
-                        a.x = px + dx * BODY_R; a.y = py + dy * BODY_R
-                        val vn = a.vx * dx + a.vy * dy
-                        if (vn < 0f) { a.vx -= 1.3f * vn * dx; a.vy -= 1.3f * vn * dy; a.vx *= 0.985f }
-                    }
-                }
-            }
-        }
-        for (b in hopper) { b.x = b.x.coerceIn(14f, 346f); if (b.y > 336f) b.y = 336f }
-    }
-
     private fun pickup() {
-        val pt = FloatArray(2)
         for (j in 0 until n) {
             val c = slots[j]
             if (c < 0) continue
@@ -366,6 +290,7 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
                     flyers.add(Flyer(c, pt[0], pt[1], b, i, b.n + b.res))
                     b.res++
                     onEvent(EV_PICK, min(pickCombo, 7)); pickCombo++; comboT = 0.6f
+                    if (pickCombo >= 3 && pickCombo % 2 == 1) popups.add(Popup("×$pickCombo", boxX[i], 484f, c))
                     break
                 }
             }
@@ -374,7 +299,10 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
 
     private fun startPop(b: Box, i: Int) {
         b.pop = 0f
-        burst(boxX[i], BOX_Y, b.c, 14)
+        burst(boxX[i], BOX_Y, b.c, 16)
+        fx.ring(boxX[i], BOX_Y, b.c)
+        repeat(3) { fx.glint(boxX[i] + (rnd.nextFloat() - 0.5f) * 56f, BOX_Y + (rnd.nextFloat() - 0.5f) * 56f, b.c, rnd) }
+        shake = max(shake, 0.22f)
         onEvent(EV_POP, 0)
     }
 
@@ -385,6 +313,10 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
         val full = slots.none { it < 0 }
         val noMoves = cols.all { it.isEmpty() } && spawnQ.isEmpty() && hopper.isEmpty()
         if (!busy && !anyMatch && (full || noMoves)) stuckT += dt else stuckT = 0f
-        if (stuckT > 0.9f) { state = State.LOST; onEvent(EV_LOSE, 0) }
+        if (stuckT > 0.9f) { state = State.LOST; shake = 1f; onEvent(EV_LOSE, 0) }
     }
+
+    /** Угол полёта ракеты (градусы) — для отрисовки. */
+    fun rocketAngle(r: RocketFx): Float =
+        Math.toDegrees(atan2((BOX_Y - BOOST_Y).toDouble(), (boxX[r.boxIdx] - ROCKET_X).toDouble())).toFloat() + 90f
 }

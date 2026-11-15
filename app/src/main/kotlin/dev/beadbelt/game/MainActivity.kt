@@ -39,5 +39,6 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() { super.onPause(); view.pauseGame() }
+    override fun onResume() { super.onResume(); view.resumeGame() }
     override fun onDestroy() { view.release(); super.onDestroy() }
 }
