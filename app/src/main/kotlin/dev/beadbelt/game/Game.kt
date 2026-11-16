@@ -18,7 +18,7 @@ enum class State { PLAY, WON, LOST }
 /** Правила и симуляция без зависимостей от Android. */
 class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
     companion object {
-        const val SPEED = 400f      // скорость ленты, логических единиц/с (исходно было 110)
+        const val SPEED = 290f      // скорость ленты, логических единиц/с (исходно было 110)
         const val POP_T = 0.5f
         const val FLY_T = 0.2f
         const val ROCKET_T = 0.55f

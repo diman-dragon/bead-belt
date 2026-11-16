@@ -69,14 +69,16 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
     /** Ячейки ленты: у каждого места своё гнездо, шарик лежит в нём. */
     private fun beltMarbles(cv: Canvas, game: Game, ui: Ui) {
         if (px.size < game.n) { px = FloatArray(game.n); py = FloatArray(game.n) }
+        val pr = min(14f, game.sp * 0.5f - 1f)         // на очень длинных лентах гнёзда уменьшаются, чтобы не слипаться
+        val mr = min(10.6f, pr - 3.4f)
         for (j in 0 until game.n) {
             Geo.point(game.phase + j * game.sp, pt); px[j] = pt[0]; py[j] = pt[1]
-            g.pocket(cv, pt[0], pt[1], 14f)
+            g.pocket(cv, pt[0], pt[1], pr)
         }
         for (j in 0 until game.n) {
             val c = game.slots[j]; if (c < 0) continue
             val drop = (1f - (game.time - game.born[j]) / 0.15f).coerceIn(0f, 1f)
-            g.marble(cv, px[j], py[j] - drop * 14f, 10.6f, c)
+            g.marble(cv, px[j], py[j] - drop * 14f, mr, c)
         }
         val full = game.occupied >= game.n - 2
         val pulse = if (full) 1f + 0.06f * sin(ui.clock * 10f) else 1f
@@ -107,6 +109,7 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
                 drawTray(cv, game.colX[i], TRAY_Y - 17f * d, 1f - 0.06f * d, t, if (k == 0) 255 else 235)
             }
         }
+        links(cv, game, ui)
         for (li in 0 until game.leaving.size) {
             val l = game.leaving[li]
             val e = l.t * l.t
@@ -116,6 +119,42 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
             drawTray(cv, 0f, 0f, sc, l.tray, (255 * (1f - e)).toInt())
             cv.restore()
         }
+    }
+
+    /**
+     * Связанные лотки: лоток со стрелкой (ведущий) обводится толстым золотом, лотки, которые он потянет за собой, —
+     * тонким, а между ними ставится скоба со стрелкой. Три прохода, чтобы обводка соседа не перекрывала скобу.
+     */
+    private fun links(cv: Canvas, game: Game, ui: Ui) {
+        val pulse = 0.5f + 0.5f * sin(ui.clock * 4f)
+        val p = g.p
+        p.style = Paint.Style.STROKE; p.shader = null
+        // 1) ведомые: тонкая обводка
+        p.strokeWidth = 2f; p.color = Theme.alpha(Theme.GOLD, 150)
+        eachLink(game) { from, to, _ -> outline(cv, game, to, game.cols[from][0].d, p) }
+        // 2) ведущие: толстая пульсирующая обводка
+        p.strokeWidth = 3.6f; p.color = Theme.alpha(Theme.GOLD, (170 + 85 * pulse).toInt())
+        eachLink(game) { from, _, _ -> outline(cv, game, from, game.cols[from][0].d, p) }
+        // 3) скобы поверх всего
+        eachLink(game) { from, to, right ->
+            g.linkClamp(cv, (game.colX[from] + game.colX[to]) / 2f, TRAY_Y - 17f * game.cols[from][0].d, right, 1f + 0.08f * pulse)
+        }
+    }
+
+    private inline fun eachLink(game: Game, f: (from: Int, to: Int, right: Boolean) -> Unit) {
+        for (i in game.cols.indices) {
+            val col = game.cols[i]
+            if (col.isEmpty() || col[0].arrow == 0) continue
+            val arrow = col[0].arrow
+            if (arrow and 2 != 0 && i + 1 < game.cols.size && game.cols[i + 1].isNotEmpty()) f(i, i + 1, true)
+            if (arrow and 1 != 0 && i > 0 && game.cols[i - 1].isNotEmpty()) f(i, i - 1, false)
+        }
+    }
+
+    private fun outline(cv: Canvas, game: Game, col: Int, d: Float, p: Paint) {
+        val y = TRAY_Y - 17f * d
+        g.rect.set(game.colX[col] - 41f, y - 45f, game.colX[col] + 41f, y + 45f)
+        cv.drawRoundRect(g.rect, 18f, 18f, p)
     }
 
     // ---------- коробки ----------

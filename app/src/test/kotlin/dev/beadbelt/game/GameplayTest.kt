@@ -5,7 +5,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GameplayTest {
-    /** Простой бот: тапает лоток, цвет которого нужен одной из активных коробок, и ждёт, пока лента разгрузится. */
+    /**
+     * Простой бот: тапает лоток, цвет которого нужен активной коробке, и только если его шарики
+     * помещаются на ленту (с учётом тех, что ещё в воронке). Иначе ждёт — лента разгружается сама.
+     */
     private fun play(id: Int, seconds: Int = 240): Game {
         val game = Game(LevelCache.get(id)) { _, _ -> }
         val dt = 1f / 60f
@@ -13,12 +16,13 @@ class GameplayTest {
         var cooldown = 0f
         while (game.state == State.PLAY && t < seconds) {
             cooldown -= dt
-            if (cooldown <= 0f && game.spawnQ.isEmpty() && game.hopper.size < 6 && game.occupied < game.n - 8) {
+            if (cooldown <= 0f && game.spawnQ.isEmpty()) {
+                val free = game.n - game.occupied - game.hopper.size
                 val want = game.boxes.filterNotNull().filter { !it.locked }.map { it.c }.toSet()
-                val open = game.cols.indices.filter { game.cols[it].isNotEmpty() }
-                val pick = open.firstOrNull { game.cols[it][0].c in want } ?: open.firstOrNull()
-                if (pick != null) game.tapColumn(pick)
-                cooldown = 0.2f
+                val open = game.cols.indices.filter { game.cols[it].isNotEmpty() && game.cols[it][0].n <= free }
+                val pick = open.firstOrNull { game.cols[it][0].c in want }
+                    ?: if (t > 60f && game.occupied > game.n / 2) open.firstOrNull() else null
+                if (pick != null) { game.tapColumn(pick); cooldown = 0.2f }
             }
             game.update(dt)
             t += dt

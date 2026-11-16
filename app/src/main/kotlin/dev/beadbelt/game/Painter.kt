@@ -300,12 +300,26 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
     private val icCoin = bake(18f, 18f) { vecCoin(it, 0f, 0f, 16f) }
     private val icRocket = bake(18f, 33f) { vecRocket(it, 1.3f, false) }
     private val icRocketFlame = bake(18f, 33f) { vecRocket(it, 1.3f, true) }
+    private val icLinkR = bake(12f, 19f) { vecLink(it, true) }
+    private val icLinkL = bake(12f, 19f) { vecLink(it, false) }
     private val icArrowR = bake(8f, 8f) { c -> arrowShape(c, 6.5f) }
     private val icArrowL = bake(8f, 8f) { c -> arrowShape(c, -6.5f) }
     private val icGlint = bake(10f, 10f) { c ->
         p.style = Paint.Style.FILL; p.shader = null; p.color = Theme.WHITE
         path.reset(); path.moveTo(0f, -10f); path.quadTo(0f, 0f, 10f, 0f); path.quadTo(0f, 0f, 0f, 10f); path.quadTo(0f, 0f, -10f, 0f); path.quadTo(0f, 0f, 0f, -10f)
         c.drawPath(path, p)
+    }
+
+    /** Золотая скоба между связанными лотками со стрелкой в сторону, куда «передаётся» тап. */
+    private fun vecLink(c: Canvas, right: Boolean) {
+        p.style = Paint.Style.FILL; p.shader = null
+        p.color = 0xFF9A6500.toInt(); rect.set(-10.5f, -15f, 10.5f, 18f); c.drawRoundRect(rect, 8f, 8f, p)
+        p.color = 0xFFFFC21F.toInt(); rect.set(-10.5f, -17f, 10.5f, 16f); c.drawRoundRect(rect, 8f, 8f, p)
+        p.color = Theme.alpha(Theme.WHITE, 110); rect.set(-7f, -14f, 7f, -4f); c.drawRoundRect(rect, 5f, 5f, p)
+        val d = if (right) 1f else -1f
+        p.style = Paint.Style.STROKE; p.strokeWidth = 3.6f; p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND; p.color = 0xFF6B4300.toInt()
+        path.reset(); path.moveTo(-3f * d, -7f); path.lineTo(3f * d, 0f); path.lineTo(-3f * d, 7f); c.drawPath(path, p)
+        p.strokeCap = Paint.Cap.BUTT
     }
 
     private fun arrowShape(c: Canvas, dir: Float) {
@@ -330,6 +344,7 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         bp.alpha = 255
         cv.drawBitmap(a.pocket, null, rect, bp)
     }
+    fun linkClamp(cv: Canvas, x: Float, y: Float, right: Boolean, sc: Float) = put(cv, if (right) icLinkR else icLinkL, x, y, sc)
     fun arrow(cv: Canvas, x: Float, y: Float, left: Boolean, sc: Float, alpha: Int) = put(cv, if (left) icArrowL else icArrowR, x, y, sc, alpha)
     fun glint(cv: Canvas, x: Float, y: Float, arm: Float, alpha: Int) = put(cv, icGlint, x, y, arm / 10f, alpha)
 }

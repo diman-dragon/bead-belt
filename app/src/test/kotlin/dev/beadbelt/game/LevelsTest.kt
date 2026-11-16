@@ -28,6 +28,26 @@ class LevelsTest {
     }
 
     @Test
+    fun firstHundredLevelsStayExactlyTheSame() {
+        val sb = StringBuilder()
+        for (l in all.filter { it.id <= 100 }) {
+            sb.append(l.id).append(':').append(l.columns.joinToString("|") { c -> c.joinToString(",") { "${it.c}.${it.n}.${it.arrow}" } })
+                .append(';').append(l.boxes.joinToString(",")).append(';').append(l.belt).append(';').append(l.elevator).append('\n')
+        }
+        assertEquals("уровни 1–100 изменились — у игроков сломается прогресс", 1518606562, sb.toString().hashCode())
+    }
+
+    @Test
+    fun secondHundredIsHarder() {
+        assertEquals(200, LEVEL_COUNT)
+        assertTrue(all.filter { it.id in 101..150 }.all { it.boxes.size == 32 })
+        assertTrue(all.filter { it.id > 150 }.all { it.boxes.size == 40 })
+        assertTrue(all.filter { it.id > 100 && it.id % 2 == 0 }.all { it.elevator >= 0 })
+        val avgArrows = { r: IntRange -> all.filter { it.id in r }.map { l -> l.columns.flatten().count { it.arrow != 0 } }.average() }
+        assertTrue("стрелок должно стать больше", avgArrows(101..200) > avgArrows(41..100))
+    }
+
+    @Test
     fun arrowsNeverPointOutsideTheField() {
         for (l in all) l.columns.forEachIndexed { ci, col ->
             for (t in col) {

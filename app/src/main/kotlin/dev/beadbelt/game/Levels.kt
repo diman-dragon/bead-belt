@@ -11,7 +11,7 @@ class TrayDef(val c: Int, val n: Int, val arrow: Int = 0)
 /** elevator — индекс стопки коробок «на лифте»: первая коробка закрыта замком, пока не соберётся любая другая. */
 class Level(val id: Int, val columns: List<List<TrayDef>>, val boxes: List<Int>, val belt: Int, val elevator: Int = -1)
 
-const val LEVEL_COUNT = 100
+const val LEVEL_COUNT = 200
 const val BOX = 3          // шариков в коробке
 const val SLOTS = 4        // активных коробок
 const val COLOR_COUNT = 8
@@ -95,8 +95,11 @@ object Levels {
     fun make(id: Int): Level {
         for (attempt in 0 until 20) {
             val r = Rng(id * 7919 + attempt * 104729 + 13)
-            val k = min(3 + (id - 1) / 2, COLOR_COUNT)
-            val m = min(2 + id / 6, 4)
+            // 1–100: прежняя прогрессия (уровни не меняются). 101–200: все 8 цветов, коробок на цвет 4 → 5,
+            // больше стрелок, лифт на каждом втором уровне.
+            val hard = id > 100
+            val k = if (hard) COLOR_COUNT else min(3 + (id - 1) / 2, COLOR_COUNT)
+            val m = if (hard) 4 + (id - 101) / 50 else min(2 + id / 6, 4)
             val nCols = if (id < 3) 3 else 4
             val trays = ArrayList<TrayDef>()
             val boxes = ArrayList<Int>()
@@ -117,7 +120,7 @@ object Levels {
             trays.forEachIndexed { i, t -> raw[i % nCols].add(t) }
 
             // стрелки с 8-го уровня, лифт с 15-го (каждый третий)
-            val pArrow = if (id < 8) 0.0 else min(0.15 + id / 400.0, 0.35)
+            val pArrow = if (id < 8) 0.0 else if (hard) min(0.25 + (id - 100) / 400.0, 0.5) else min(0.15 + id / 400.0, 0.35)
             val columns = raw.mapIndexed { ci, col ->
                 col.map { t ->
                     if (r.next() < pArrow) {
@@ -129,7 +132,7 @@ object Levels {
                     } else t
                 }
             }
-            val elevator = if (id >= 15 && id % 3 == 0) r.nextInt(SLOTS) else -1
+            val elevator = if (id >= 15 && id % (if (hard) 2 else 3) == 0) r.nextInt(SLOTS) else -1
 
             val probe = Level(id, columns, boxes, 30, elevator)
             val minCap = (8..30).firstOrNull { solvable(probe, it) } ?: continue
