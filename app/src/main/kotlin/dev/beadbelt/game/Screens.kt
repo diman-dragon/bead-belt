@@ -11,6 +11,19 @@ import kotlin.math.sin
 class Screens(private val g: Painter, private val progress: Progress, private val version: String) {
     private val titleTop = LinearGradient(0f, 122f, 0f, 178f, Theme.WHITE, 0xFFBDE4FF.toInt(), Shader.TileMode.CLAMP)
     private val titleBottom = LinearGradient(0f, 192f, 0f, 246f, 0xFFFFF27A.toInt(), 0xFFFF9A1F.toInt(), Shader.TileMode.CLAMP)
+    // Заголовок с обводкой и градиентом запечён один раз: текст с обводкой в каждом кадре — самый дорогой вид текста.
+    private val title: android.graphics.Bitmap = bakeTitle()
+
+    private fun bakeTitle(): android.graphics.Bitmap {
+        val k = g.a.k
+        val bmp = android.graphics.Bitmap.createBitmap(Math.ceil(280.0 * k).toInt(), Math.ceil(170.0 * k).toInt(), android.graphics.Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp); c.scale(k, k); c.translate(-40f, -96f)
+        g.gradientText(c, "BEAD", 180f, 176f, 68f, titleTop, 0xFF1B2F9E.toInt())
+        g.gradientText(c, "BELT", 180f, 244f, 68f, titleBottom, 0xFF8A2A00.toInt())
+        return bmp
+    }
+
+    private val titlePaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val levelNames = Array(LEVEL_COUNT + 1) { it.toString() }
 
     private var playKey = -1
@@ -28,10 +41,9 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         }
         g.coinPill(cv, 284f, 36f, progress.coins)
 
-        cv.save(); cv.translate(0f, sin(t * 1.6f) * 3f)
-        g.gradientText(cv, "BEAD", 180f, 176f, 68f, titleTop, 0xFF1B2F9E.toInt())
-        g.gradientText(cv, "BELT", 180f, 244f, 68f, titleBottom, 0xFF8A2A00.toInt())
-        cv.restore()
+        val bob = sin(t * 1.6f) * 3f
+        g.rect.set(40f, 96f + bob, 320f, 266f + bob)
+        cv.drawBitmap(title, null, g.rect, titlePaint)
 
         for (i in 0 until 7) {                     // прыгающие шарики
             val ph = t * 3.2f + i * 0.75f

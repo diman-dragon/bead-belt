@@ -9,6 +9,7 @@ import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -30,27 +31,38 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
 
     // ---------- фон ----------
 
-    private val bgShader = LinearGradient(0f, 0f, 0f, sh, intArrayOf(Theme.BG_TOP, Theme.BG_MID, Theme.BG_BOTTOM), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-    private val topGlow = RadialGradient(sw / 2, sh * 0.1f, sw * 1.0f, Theme.alpha(Theme.WHITE, 85), 0, Shader.TileMode.CLAMP)
-    private val vignette = RadialGradient(sw / 2, sh / 2, maxOf(sw, sh) * 0.75f, intArrayOf(0, 0, Theme.alpha(0xFF050B30.toInt(), 150)), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
-
+    // Весь статичный фон (градиент, свет, боке, виньетка) запечён в ОДИН битмап вдвое меньшего размера:
+    // раньше это были ~6 полноэкранных слоёв с шейдерами в каждом кадре.
     private val bx = floatArrayOf(0.12f, 0.85f, 0.5f, 0.2f, 0.78f, 0.35f, 0.92f, 0.05f, 0.62f, 0.3f, 0.7f, 0.15f, 0.45f, 0.95f)
     private val by = floatArrayOf(0.08f, 0.15f, 0.3f, 0.45f, 0.5f, 0.68f, 0.75f, 0.82f, 0.92f, 0.22f, 0.38f, 0.6f, 0.05f, 0.4f)
     private val bs = floatArrayOf(0.5f, 0.38f, 0.62f, 0.32f, 0.55f, 0.45f, 0.35f, 0.5f, 0.4f, 0.3f, 0.28f, 0.42f, 0.34f, 0.26f)
 
-    fun background(cv: Canvas, t: Float) {
-        p.style = Paint.Style.FILL
-        p.shader = bgShader; cv.drawRect(0f, 0f, sw, sh, p)
-        p.shader = topGlow; cv.drawRect(0f, 0f, sw, sh, p)
-        p.shader = null
+    private val bgBitmap: Bitmap = bakeBackground()      // после массивов боке — порядок инициализации важен
+    private val bgPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+
+    private fun bakeBackground(): Bitmap {
+        val s = 0.5f
+        val bmp = Bitmap.createBitmap(ceil(sw * s).toInt(), ceil(sh * s).toInt(), Bitmap.Config.ARGB_8888)
+        val cv = Canvas(bmp); cv.scale(s, s)
+        val q = Paint(Paint.ANTI_ALIAS_FLAG)
+        q.shader = LinearGradient(0f, 0f, 0f, sh, intArrayOf(Theme.BG_TOP, Theme.BG_MID, Theme.BG_BOTTOM), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        cv.drawRect(0f, 0f, sw, sh, q)
+        q.shader = RadialGradient(sw / 2, sh * 0.1f, sw * 1.0f, Theme.alpha(Theme.WHITE, 85), 0, Shader.TileMode.CLAMP)
+        cv.drawRect(0f, 0f, sw, sh, q)
         for (i in bx.indices) {
             val sz = (0.22f + bs[i] * 0.6f) * sw
-            val x = (bx[i] + 0.025f * sin(t * (0.25f + bs[i] * 0.3f) + i)) * sw
-            val y = (by[i] + 0.02f * cos(t * (0.2f + bs[i] * 0.25f) + i * 2f)) * sh
-            rect.set(x - sz / 2, y - sz / 2, x + sz / 2, y + sz / 2)
+            rect.set(bx[i] * sw - sz / 2, by[i] * sh - sz / 2, bx[i] * sw + sz / 2, by[i] * sh + sz / 2)
             cv.drawBitmap(a.glow, null, rect, a.bokeh[i % a.bokeh.size])
         }
-        p.shader = vignette; cv.drawRect(0f, 0f, sw, sh, p); p.shader = null
+        q.shader = RadialGradient(sw / 2, sh / 2, maxOf(sw, sh) * 0.75f, intArrayOf(0, 0, Theme.alpha(0xFF050B30.toInt(), 150)), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+        cv.drawRect(0f, 0f, sw, sh, q)
+        return bmp
+    }
+
+    /** Фон — один статичный битмап (никакой анимации: максимум плавности). */
+    fun background(cv: Canvas, t: Float) {
+        rect.set(0f, 0f, sw, sh)
+        cv.drawBitmap(bgBitmap, null, rect, bgPaint)
     }
 
     // ---------- текст ----------
@@ -139,7 +151,7 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
 
     // ---------- значки ----------
 
-    fun coin(cv: Canvas, x: Float, y: Float, r: Float) {
+    private fun vecCoin(cv: Canvas, x: Float, y: Float, r: Float) {
         p.style = Paint.Style.FILL; p.shader = null
         p.color = 0xFFE59A00.toInt(); cv.drawCircle(x, y + r * 0.12f, r, p)
         p.color = 0xFFFFC21F.toInt(); cv.drawCircle(x, y, r, p)
@@ -163,7 +175,7 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         text(cv, s, x - w / 2 + 36f, y + 7f, 19f, align = Paint.Align.LEFT)
     }
 
-    fun lock(cv: Canvas, x: Float, y: Float, sc: Float = 1f) {
+    private fun vecLock(cv: Canvas, x: Float, y: Float, sc: Float = 1f) {
         cv.save(); cv.translate(x, y); cv.scale(sc, sc)
         p.style = Paint.Style.STROKE; p.strokeWidth = 4f; p.color = 0xFFE6ECFF.toInt(); p.shader = null
         rect.set(-8f, -20f, 8f, -2f); cv.drawArc(rect, 180f, 180f, false, p)
@@ -173,7 +185,7 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         cv.restore()
     }
 
-    fun check(cv: Canvas, x: Float, y: Float, sc: Float, color: Int) {
+    private fun vecCheck(cv: Canvas, x: Float, y: Float, sc: Float, color: Int) {
         p.style = Paint.Style.STROKE; p.strokeWidth = 3.4f * sc; p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND; p.color = color; p.shader = null
         path.reset(); path.moveTo(x - 6f * sc, y); path.lineTo(x - 1.5f * sc, y + 5f * sc); path.lineTo(x + 7f * sc, y - 5f * sc)
         cv.drawPath(path, p); p.strokeCap = Paint.Cap.BUTT
@@ -193,7 +205,7 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
     }
 
     /** Ракета носом вверх, центр в (0,0). */
-    fun rocket(cv: Canvas, sc: Float, flame: Boolean) {
+    private fun vecRocket(cv: Canvas, sc: Float, flame: Boolean) {
         p.style = Paint.Style.FILL; p.shader = null
         if (flame) {
             p.color = 0xFFFF7A1F.toInt(); path.reset(); path.moveTo(-5f * sc, 9f * sc); path.lineTo(0f, 24f * sc); path.lineTo(5f * sc, 9f * sc); path.close(); cv.drawPath(path, p)
@@ -209,7 +221,7 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         p.color = Theme.alpha(Theme.WHITE, 200); cv.drawCircle(-0.9f * sc, -3f * sc, 1f * sc, p)
     }
 
-    fun returnIcon(cv: Canvas) {
+    private fun vecReturnIcon(cv: Canvas) {
         p.style = Paint.Style.STROKE; p.strokeWidth = 3.4f; p.strokeCap = Paint.Cap.ROUND; p.color = Theme.WHITE; p.shader = null
         rect.set(-9f, -6f, 9f, 12f); cv.drawArc(rect, 200f, 260f, false, p)
         p.style = Paint.Style.FILL
@@ -217,13 +229,13 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         p.strokeCap = Paint.Cap.BUTT
     }
 
-    fun back(cv: Canvas, x: Float, y: Float) {
+    private fun vecBack(cv: Canvas, x: Float, y: Float) {
         p.style = Paint.Style.STROKE; p.strokeWidth = 3.8f; p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND; p.color = Theme.WHITE; p.shader = null
         path.reset(); path.moveTo(x + 4f, y - 9f); path.lineTo(x - 5f, y); path.lineTo(x + 4f, y + 9f); cv.drawPath(path, p)
         p.strokeCap = Paint.Cap.BUTT
     }
 
-    fun speaker(cv: Canvas, x: Float, y: Float, on: Boolean) {
+    private fun vecSpeaker(cv: Canvas, x: Float, y: Float, on: Boolean) {
         p.style = Paint.Style.FILL; p.color = Theme.WHITE; p.shader = null
         path.reset(); path.moveTo(x - 9f, y - 4f); path.lineTo(x - 4f, y - 4f); path.lineTo(x + 3f, y - 10f)
         path.lineTo(x + 3f, y + 10f); path.lineTo(x - 4f, y + 4f); path.lineTo(x - 9f, y + 4f); path.close()
@@ -236,7 +248,7 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         p.strokeCap = Paint.Cap.BUTT
     }
 
-    fun restart(cv: Canvas, x: Float, y: Float) {
+    private fun vecRestart(cv: Canvas, x: Float, y: Float) {
         p.style = Paint.Style.STROKE; p.strokeWidth = 3.2f; p.color = Theme.WHITE; p.strokeCap = Paint.Cap.ROUND; p.shader = null
         rect.set(x - 9f, y - 9f, x + 9f, y + 9f); cv.drawArc(rect, 40f, 280f, false, p)
         p.style = Paint.Style.FILL
@@ -258,4 +270,66 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         p.style = Paint.Style.STROKE; p.strokeWidth = 1.5f; p.color = Theme.alpha(Theme.WHITE, 80)
         rect.set(l, t, r, b); cv.drawRoundRect(rect, rad, rad, p)
     }
+
+    // ---------- запечённые значки ----------
+    // Значки раньше рисовались Path-ами, которые пересоздавались каждый кадр, — GPU не может их кэшировать.
+    // Теперь они один раз запекаются в маленькие битмапы и рисуются через drawBitmap.
+
+    private class Icon(val bmp: Bitmap, val hw: Float, val hh: Float)
+
+    private fun bake(hw: Float, hh: Float, draw: (Canvas) -> Unit): Icon {
+        val bmp = Bitmap.createBitmap(ceil(2 * hw * a.k).toInt(), ceil(2 * hh * a.k).toInt(), Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp); c.scale(a.k, a.k); c.translate(hw, hh)
+        draw(c)
+        return Icon(bmp, hw, hh)
+    }
+
+    private fun put(cv: Canvas, ic: Icon, x: Float, y: Float, sc: Float = 1f, alpha: Int = 255) {
+        rect.set(x - ic.hw * sc, y - ic.hh * sc, x + ic.hw * sc, y + ic.hh * sc)
+        bp.alpha = alpha
+        cv.drawBitmap(ic.bmp, null, rect, bp)
+    }
+
+    private val icSpeakerOn = bake(18f, 14f) { vecSpeaker(it, 0f, 0f, true) }
+    private val icSpeakerOff = bake(18f, 14f) { vecSpeaker(it, 0f, 0f, false) }
+    private val icRestart = bake(17f, 17f) { vecRestart(it, 0f, 0f) }
+    private val icBack = bake(10f, 12f) { vecBack(it, 0f, 0f) }
+    private val icReturn = bake(17f, 17f) { vecReturnIcon(it) }
+    private val icLock = bake(16f, 24f) { vecLock(it, 0f, 0f, 1f) }
+    private val icCheck = bake(12f, 10f) { vecCheck(it, 0f, 0f, 1f, Theme.WHITE) }
+    private val icCoin = bake(18f, 18f) { vecCoin(it, 0f, 0f, 16f) }
+    private val icRocket = bake(18f, 33f) { vecRocket(it, 1.3f, false) }
+    private val icRocketFlame = bake(18f, 33f) { vecRocket(it, 1.3f, true) }
+    private val icArrowR = bake(8f, 8f) { c -> arrowShape(c, 6.5f) }
+    private val icArrowL = bake(8f, 8f) { c -> arrowShape(c, -6.5f) }
+    private val icGlint = bake(10f, 10f) { c ->
+        p.style = Paint.Style.FILL; p.shader = null; p.color = Theme.WHITE
+        path.reset(); path.moveTo(0f, -10f); path.quadTo(0f, 0f, 10f, 0f); path.quadTo(0f, 0f, 0f, 10f); path.quadTo(0f, 0f, -10f, 0f); path.quadTo(0f, 0f, 0f, -10f)
+        c.drawPath(path, p)
+    }
+
+    private fun arrowShape(c: Canvas, dir: Float) {
+        p.style = Paint.Style.FILL; p.shader = null; p.color = Theme.WHITE
+        path.reset(); path.moveTo(dir, 0f); path.lineTo(-dir * 0.7f, -Math.abs(dir)); path.lineTo(-dir * 0.7f, Math.abs(dir)); path.close()
+        c.drawPath(path, p)
+    }
+
+    fun speaker(cv: Canvas, x: Float, y: Float, on: Boolean) = put(cv, if (on) icSpeakerOn else icSpeakerOff, x, y)
+    fun restart(cv: Canvas, x: Float, y: Float) = put(cv, icRestart, x, y)
+    fun back(cv: Canvas, x: Float, y: Float) = put(cv, icBack, x, y)
+    fun returnIcon(cv: Canvas) = put(cv, icReturn, 0f, 0f)
+    fun lock(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icLock, x, y, sc)
+    fun check(cv: Canvas, x: Float, y: Float, sc: Float, color: Int) = put(cv, icCheck, x, y, sc, color ushr 24)
+    fun coin(cv: Canvas, x: Float, y: Float, r: Float) = put(cv, icCoin, x, y, r / 16f)
+    /** Ракета носом вверх, центр в (0,0); sc = 1 — обычный размер. */
+    fun rocket(cv: Canvas, sc: Float, flame: Boolean) = put(cv, if (flame) icRocketFlame else icRocket, 0f, 0f, sc / 1.3f)
+    /** Гнездо ленты радиусом r. */
+    fun pocket(cv: Canvas, x: Float, y: Float, r: Float) {
+        val h = r * 15f / 14f
+        rect.set(x - h, y - h, x + h, y + h)
+        bp.alpha = 255
+        cv.drawBitmap(a.pocket, null, rect, bp)
+    }
+    fun arrow(cv: Canvas, x: Float, y: Float, left: Boolean, sc: Float, alpha: Int) = put(cv, if (left) icArrowL else icArrowR, x, y, sc, alpha)
+    fun glint(cv: Canvas, x: Float, y: Float, arm: Float, alpha: Int) = put(cv, icGlint, x, y, arm / 10f, alpha)
 }

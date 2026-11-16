@@ -49,7 +49,7 @@ class Sound(context: Context) {
                         ids[name] = sp.load(f.absolutePath, 1)
                     }
                 } catch (e: Exception) { /* звук не критичен */ }
-            }, "sound-init").also { it.isDaemon = true }.start()
+            }, "sound-init").also { it.isDaemon = true; it.priority = Thread.MIN_PRIORITY }.start()
         }
     }
 

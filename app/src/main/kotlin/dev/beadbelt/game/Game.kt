@@ -18,11 +18,10 @@ enum class State { PLAY, WON, LOST }
 /** Правила и симуляция без зависимостей от Android. */
 class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
     companion object {
-        const val SPEED = 250f      // скорость ленты, логических единиц/с (было 110)
+        const val SPEED = 400f      // скорость ленты, логических единиц/с (исходно было 110)
         const val POP_T = 0.5f
         const val FLY_T = 0.2f
         const val ROCKET_T = 0.55f
-        const val PH = 1f / 120f
     }
 
     val cols: List<MutableList<Tray>> =
@@ -62,7 +61,6 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
     private var comboT = 0f
     private var spawnT = 0f
     private var clinkT = 0f
-    private var acc = 0f
     private val rnd = java.util.Random(level.id.toLong())
 
     init { cols.forEach { col -> col.forEachIndexed { i, t -> t.d = i.toFloat() } } }
@@ -194,16 +192,18 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
                 hopper.add(Body(s.c, s.x + (rnd.nextFloat() - 0.5f) * 14f, TRAY_Y + 34f).also { it.vy = 110f + rnd.nextFloat() * 70f; it.vx = (rnd.nextFloat() - 0.5f) * 110f })
                 spawnT = 0.04f
             }
-            acc += dt
-            var steps = 0
+            // Равные подшаги на кадр (а не «накопитель» 120 Гц): число шагов не прыгает 1-2-1-2, движение ровное
+            val sub = kotlin.math.ceil(dt / 0.0105f).toInt().coerceIn(1, 4)
+            val h = dt / sub
             physics.resetHit()
-            while (acc >= PH && steps < 6) { physics.step(PH); acc -= PH; steps++ }
-            if (steps == 6) acc = 0f
+            repeat(sub) { physics.step(h) }
+            val sm = min(1f, dt * 40f)
+            for (i in 0 until hopper.size) { val b = hopper[i]; b.rx += (b.x - b.rx) * sm; b.ry += (b.y - b.ry) * sm }
             clinkT -= dt
             if (physics.hitSpeed > 130f && clinkT <= 0f) {     // сильный удар: блик и звонкий «цок»
                 fx.glint(physics.hitX, physics.hitY, rnd.nextInt(COLOR_COUNT), rnd)
                 onEvent(EV_CLINK, min(7, (physics.hitSpeed / 90f).toInt()))
-                clinkT = 0.09f
+                clinkT = 0.16f
             }
 
             val old = phase
@@ -217,7 +217,7 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
                 }
             }
             phase %= Geo.L
-            pickup()
+            pickup(dt)
         }
 
         var fi = flyers.size - 1
@@ -263,7 +263,7 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
         if (state == State.PLAY) {
             if (done == total && flyers.isEmpty() && rockets.isEmpty()) {
                 state = State.WON; onEvent(EV_WIN, 0)
-                repeat(110) { fx.confetti(rnd, COLOR_COUNT) }
+                repeat(40) { fx.confetti(rnd, COLOR_COUNT) }
             } else checkStuck(dt)
         }
     }
@@ -277,7 +277,9 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
         if (b.n == BOX && b.res == 0 && b.pop < 0f) startPop(b, idx)
     }
 
-    private fun pickup() {
+    private fun pickup(dt: Float) {
+        // окно захвата растёт со скоростью кадра, чтобы быстрая лента не «перепрыгивала» коробку
+        val tol = max(7f, SPEED * dt * 0.6f)
         for (j in 0 until n) {
             val c = slots[j]
             if (c < 0) continue
@@ -285,7 +287,7 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
             if (pt[1] < Geo.CY + 8f) continue
             for (i in 0 until SLOTS) {
                 val b = boxes[i] ?: continue
-                if (b.c == c && ready(b) && b.n + b.res < BOX && abs(pt[0] - boxX[i]) < 7f) {
+                if (b.c == c && ready(b) && b.n + b.res < BOX && abs(pt[0] - boxX[i]) < tol) {
                     slots[j] = -1
                     flyers.add(Flyer(c, pt[0], pt[1], b, i, b.n + b.res))
                     b.res++
@@ -299,10 +301,9 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
 
     private fun startPop(b: Box, i: Int) {
         b.pop = 0f
-        burst(boxX[i], BOX_Y, b.c, 16)
+        burst(boxX[i], BOX_Y, b.c, 8)
         fx.ring(boxX[i], BOX_Y, b.c)
-        repeat(3) { fx.glint(boxX[i] + (rnd.nextFloat() - 0.5f) * 56f, BOX_Y + (rnd.nextFloat() - 0.5f) * 56f, b.c, rnd) }
-        shake = max(shake, 0.22f)
+        repeat(2) { fx.glint(boxX[i] + (rnd.nextFloat() - 0.5f) * 56f, BOX_Y + (rnd.nextFloat() - 0.5f) * 56f, b.c, rnd) }
         onEvent(EV_POP, 0)
     }
 
@@ -313,7 +314,7 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
         val full = slots.none { it < 0 }
         val noMoves = cols.all { it.isEmpty() } && spawnQ.isEmpty() && hopper.isEmpty()
         if (!busy && !anyMatch && (full || noMoves)) stuckT += dt else stuckT = 0f
-        if (stuckT > 0.9f) { state = State.LOST; shake = 1f; onEvent(EV_LOSE, 0) }
+        if (stuckT > 0.9f) { state = State.LOST; shake = 0.6f; onEvent(EV_LOSE, 0) }
     }
 
     /** Угол полёта ракеты (градусы) — для отрисовки. */

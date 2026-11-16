@@ -145,9 +145,15 @@ object Levels {
 /** Кэш сгенерированных уровней: следующий уровень готовится в фоне, пока играешь текущий. */
 object LevelCache {
     private val cache = java.util.concurrent.ConcurrentHashMap<Int, Level>()
-    private val pool = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "level-gen").also { it.isDaemon = true } }
+    private val pool = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "level-gen").also { it.isDaemon = true; it.priority = Thread.MIN_PRIORITY } }
 
     fun get(id: Int): Level = cache.getOrPut(id.coerceIn(1, LEVEL_COUNT)) { Levels.make(id.coerceIn(1, LEVEL_COUNT)) }
+
+    /** Уже готовый уровень или null — чтобы не считать на UI-потоке. */
+    fun peek(id: Int): Level? = cache[id.coerceIn(1, LEVEL_COUNT)]
+
+    /** Генерирует уровень в фоне и вызывает done в том же фоновом потоке. */
+    fun load(id: Int, done: () -> Unit) { pool.execute { try { get(id) } finally { done() } } }
 
     fun prefetch(id: Int) {
         val i = id.coerceIn(1, LEVEL_COUNT)

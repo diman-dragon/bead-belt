@@ -76,4 +76,21 @@ class GameplayTest {
     fun levelCacheReturnsTheSameLevel() {
         assertTrue(LevelCache.get(7) === LevelCache.get(7))
     }
+
+    @Test
+    fun physicsIsStableOnAnyRefreshRate() {
+        for (hz in intArrayOf(30, 60, 90, 120, 144)) {
+            val game = Game(LevelCache.get(60)) { _, _ -> }
+            repeat(10) { game.tapColumn(it % game.cols.size) }
+            repeat(hz * 8) { game.update(1f / hz) }
+            for (b in game.hopper) assertTrue("$hz Гц: шарик вне воронки ${b.x},${b.y}", b.x in 0f..360f && b.y < 345f && !b.vx.isNaN() && !b.vy.isNaN())
+        }
+    }
+
+    @Test
+    fun beltSpeedIsIndependentOfFrameRate() {
+        fun phaseAfter(hz: Int): Float { val g = Game(LevelCache.get(5)) { _, _ -> }; repeat(hz) { g.update(1f / hz) }; return g.phase }
+        val a = phaseAfter(60); val b = phaseAfter(120)
+        assertEquals(a.toDouble(), b.toDouble(), 3.0)
+    }
 }

@@ -39,6 +39,7 @@ class GameView(context: Context) : View(context) {
 
     private var running = false
     private var lastNs = 0L
+    private var smoothDt = 0f
 
     // геометрия: поле 360x640 вписано в экран
     private var s = 1f
@@ -78,8 +79,11 @@ class GameView(context: Context) : View(context) {
     private val frame = object : Choreographer.FrameCallback {
         override fun doFrame(ns: Long) {
             if (!running) return
-            val dt = if (lastNs == 0L) 0f else min((ns - lastNs) / 1e9f, 0.05f)
+            val raw = if (lastNs == 0L) 0f else min((ns - lastNs) / 1e9f, 0.05f)
             lastNs = ns
+            // Сглаживание шага времени: шум таймстемпов не превращается в рывки, а настоящий пропуск кадра проходит как есть
+            smoothDt = if (raw == 0f) smoothDt else if (smoothDt == 0f || abs(raw - smoothDt) > smoothDt * 0.5f) raw else smoothDt + (raw - smoothDt) * 0.15f
+            val dt = if (raw == 0f) 0f else smoothDt
             update(dt)
             invalidate()
             Choreographer.getInstance().postFrameCallback(this)
@@ -103,7 +107,7 @@ class GameView(context: Context) : View(context) {
 
     private fun startLoop() {
         if (running || !isAttachedToWindow) return
-        running = true; lastNs = 0L
+        running = true; lastNs = 0L; smoothDt = 0f
         Choreographer.getInstance().postFrameCallback(frame)
     }
 
@@ -144,8 +148,17 @@ class GameView(context: Context) : View(context) {
         }
     }
 
+    private var loading = false
+
     private fun startLevel(id: Int) {
-        current = id.coerceIn(1, LEVEL_COUNT)
+        val target = id.coerceIn(1, LEVEL_COUNT)
+        if (loading) return
+        if (LevelCache.peek(target) == null) {        // генерация уровня не должна фризить кадры
+            loading = true; fade = 1f
+            LevelCache.load(target) { post { loading = false; startLevel(target) } }
+            return
+        }
+        current = target
         ui.endT = 0f; reward = 0; paused = false
         hint = when (current) {
             1 -> "Нажми на лоток: шарики поедут по конвейеру"
@@ -157,7 +170,7 @@ class GameView(context: Context) : View(context) {
         hintAt = ui.clock
         game = Game(LevelCache.get(current)) { ev, arg ->
             sound.event(ev, arg)
-            if (ev == EV_POP || ev == EV_WIN || ev == EV_LOSE || ev == EV_UNLOCK) performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            if (ev == EV_WIN || ev == EV_LOSE) performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             if (ev == EV_WIN) reward = progress.win(current)
         }
         LevelCache.prefetch(current + 1)
@@ -252,7 +265,7 @@ class GameView(context: Context) : View(context) {
             BTN_SOUND -> { progress.sound = !progress.sound; sound.enabled = progress.sound }
             BTN_BACK, BTN_MENU -> go(Screen.MENU)
             BTN_RESTART -> startLevel(current)
-            BTN_RESUME -> { paused = false; lastNs = 0L }
+            BTN_RESUME -> { paused = false; lastNs = 0L; smoothDt = 0f }
             BTN_ROCKET -> if (g != null) useBooster(true, g)
             BTN_RETURN -> if (g != null) useBooster(false, g)
             BTN_NEXT -> if (g != null) startLevel(if (g.state == State.WON && current < LEVEL_COUNT) current + 1 else current)

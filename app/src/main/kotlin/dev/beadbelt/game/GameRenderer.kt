@@ -11,8 +11,6 @@ import kotlin.math.sin
 /** Рисует игровое поле: HUD, лотки, воронку, ленту, коробки, эффекты и бустеры. */
 class GameRenderer(private val g: Painter, private val a: Assets, private val progress: Progress) {
     private companion object {
-        val CHEVRONS = Math.round(Geo.L / 24f)
-        val CHEVRON_STEP = Geo.L / CHEVRONS
         const val ROCKET_LABEL = "${Progress.ROCKET_PRICE}"
         const val RETURN_LABEL = "${Progress.RETURN_PRICE}"
     }
@@ -28,14 +26,12 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
 
     fun draw(cv: Canvas, game: Game, ui: Ui, hint: String, hintAlpha: Float) {
         cv.save()
-        if (game.shake > 0f) cv.translate(sin(ui.clock * 95f) * game.shake * 5f, cos(ui.clock * 81f) * game.shake * 4f)
+        if (game.shake > 0f) cv.translate(sin(ui.clock * 95f) * game.shake * 3f, cos(ui.clock * 81f) * game.shake * 2.5f)
 
         hud(cv, game, ui, hint, hintAlpha)
         cv.drawBitmap(a.board, null, g.rect.also { it.set(0f, Assets.BOARD_Y0, W, Assets.BOARD_Y0 + Assets.BOARD_H) }, boardPaint)
-        chevrons(cv, game)
         trays(cv, game, ui)
         hopperMarbles(cv, game)
-        cv.drawBitmap(a.glass, null, g.rect.also { it.set(0f, Assets.GLASS_Y0, W, Assets.GLASS_Y0 + Assets.GLASS_H) }, boardPaint)
         beltMarbles(cv, game, ui)
         boxes(cv, game)
         flyers(cv, game)
@@ -62,32 +58,25 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
 
     // ---------- лента ----------
 
-    /** Бегущие шевроны показывают направление ленты. */
-    private fun chevrons(cv: Canvas, game: Game) {
-        val p = g.p
-        p.style = Paint.Style.STROKE; p.strokeWidth = 2.2f; p.strokeCap = Paint.Cap.ROUND; p.color = Theme.alpha(Theme.WHITE, 50); p.shader = null
-        g.path.reset(); g.path.moveTo(-2.5f, -4.5f); g.path.lineTo(2f, 0f); g.path.lineTo(-2.5f, 4.5f)
-        for (i in 0 until CHEVRONS) {           // ровно целое число шевронов на круг — шов не заметен
-            Geo.pose(game.phase + i * CHEVRON_STEP, pt)
-            cv.save(); cv.translate(pt[0], pt[1]); cv.rotate(pt[2])
-            cv.drawPath(g.path, p)
-            cv.restore()
-        }
-        p.strokeCap = Paint.Cap.BUTT
-    }
-
     private fun hopperMarbles(cv: Canvas, game: Game) {
         val h = game.hopper
-        for (i in 0 until h.size) { val b = h[i]; g.marble(cv, b.x, b.y, BODY_R, b.c) }
+        for (i in 0 until h.size) { val b = h[i]; g.marble(cv, b.rx, b.ry, BODY_R, b.c) }
     }
 
+    private var px = FloatArray(0)
+    private var py = FloatArray(0)
+
+    /** Ячейки ленты: у каждого места своё гнездо, шарик лежит в нём. */
     private fun beltMarbles(cv: Canvas, game: Game, ui: Ui) {
+        if (px.size < game.n) { px = FloatArray(game.n); py = FloatArray(game.n) }
+        for (j in 0 until game.n) {
+            Geo.point(game.phase + j * game.sp, pt); px[j] = pt[0]; py[j] = pt[1]
+            g.pocket(cv, pt[0], pt[1], 14f)
+        }
         for (j in 0 until game.n) {
             val c = game.slots[j]; if (c < 0) continue
-            Geo.point(game.phase + j * game.sp, pt)
-            val drop = (1f - (game.time - game.born[j]) / 0.2f).coerceIn(0f, 1f)
-            if (drop < 0.5f) g.shadowBlob(cv, pt[0], pt[1] + 4f, 12f, 150)
-            g.marble(cv, pt[0], pt[1] - drop * 18f, 11f * (1f - drop * 0.25f), c)
+            val drop = (1f - (game.time - game.born[j]) / 0.15f).coerceIn(0f, 1f)
+            g.marble(cv, px[j], py[j] - drop * 14f, 10.6f, c)
         }
         val full = game.occupied >= game.n - 2
         val pulse = if (full) 1f + 0.06f * sin(ui.clock * 10f) else 1f
@@ -104,31 +93,22 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         val r = 8.5f * sc
         for (k in 0 until t.n) g.marble(cv, x + ((k % 3) - 1) * 20f * sc, y - h / 2 + 12f + 12f * sc + (k / 3) * 20f * sc, r, t.c, alpha)
         if (t.arrow != 0) {                      // стрелки на табличке внизу лотка
-            val p = g.p
-            p.style = Paint.Style.FILL; p.shader = null; p.color = Theme.alpha(Theme.WHITE, alpha)
-            val yy = y + h / 2 - 19f * sc; val k = 6.5f * sc
-            if (t.arrow and 1 != 0) arrow(cv, x - 14f * sc, yy, -k)
-            if (t.arrow and 2 != 0) arrow(cv, x + 14f * sc, yy, k)
+            val yy = y + h / 2 - 19f * sc
+            if (t.arrow and 1 != 0) g.arrow(cv, x - 14f * sc, yy, true, sc, alpha)
+            if (t.arrow and 2 != 0) g.arrow(cv, x + 14f * sc, yy, false, sc, alpha)
         }
-    }
-
-    /** Треугольник-стрелка с вершиной в направлении dir (знак = влево/вправо). */
-    private fun arrow(cv: Canvas, x: Float, y: Float, dir: Float) {
-        g.path.reset(); g.path.moveTo(x + dir, y); g.path.lineTo(x - dir * 0.7f, y - abs(dir)); g.path.lineTo(x - dir * 0.7f, y + abs(dir)); g.path.close()
-        cv.drawPath(g.path, g.p)
     }
 
     private fun trays(cv: Canvas, game: Game, ui: Ui) {
         for (i in game.cols.indices) {
             val col = game.cols[i]
-            for (k in minOf(col.size - 1, 3) downTo 0) {
+            for (k in minOf(col.size - 1, 2) downTo 0) {
                 val t = col[k]; val d = t.d
-                // передний лоток слегка «дышит» — подсказка, что на него можно нажать
-                val breathe = if (k == 0) 1f + 0.012f * sin(ui.clock * 3.2f + i) else 1f
-                drawTray(cv, game.colX[i], TRAY_Y - 17f * d, (1f - 0.06f * d) * breathe, t, if (k == 0) 255 else 235)
+                drawTray(cv, game.colX[i], TRAY_Y - 17f * d, 1f - 0.06f * d, t, if (k == 0) 255 else 235)
             }
         }
-        for (l in game.leaving) {
+        for (li in 0 until game.leaving.size) {
+            val l = game.leaving[li]
             val e = l.t * l.t
             val cx = l.x + (180f - l.x) * e; val cy = TRAY_Y + (250f - TRAY_Y) * e
             val sc = 1f - 0.55f * e
@@ -144,7 +124,7 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         for (i in 0 until SLOTS) {
             val x = game.boxX[i]
             val q = game.stacks[i]
-            for (k in minOf(q.size, 2) downTo 1) g.crate(cv, a.boxDim[q[k - 1]], x, BOX_Y + 13f * k, BOX_W, BOX_H, 1f - 0.07f * k, 255)
+            for (k in minOf(q.size, 1) downTo 1) g.crate(cv, a.boxDim[q[k - 1]], x, BOX_Y + 13f * k, BOX_W, BOX_H, 1f - 0.07f * k, 255)
             val b = game.boxes[i] ?: continue
             if (b.pop >= 0f) {
                 val f = b.pop / Game.POP_T
@@ -162,7 +142,8 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
     }
 
     private fun flyers(cv: Canvas, game: Game) {
-        for (f in game.flyers) {
+        for (fi in 0 until game.flyers.size) {
+            val f = game.flyers[fi]
             val e = f.t.coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
             val tx = game.boxX[f.boxIdx] + (f.hole - 1) * 22f; val ty = BOX_Y - 12f
             g.marble(cv, f.x0 + (tx - f.x0) * e, f.y0 + (ty - f.y0) * e - sin(e * PI.toFloat()) * 10f, 11f - 1.5f * e, f.c)
@@ -170,7 +151,8 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
     }
 
     private fun rockets(cv: Canvas, game: Game) {
-        for (r in game.rockets) {                 // ракета летит от кнопки к коробке
+        for (ri in 0 until game.rockets.size) {   // ракета летит от кнопки к коробке
+            val r = game.rockets[ri]
             val e = r.t.coerceIn(0f, 1f)
             val x = ROCKET_X + (game.boxX[r.boxIdx] - ROCKET_X) * e
             val y = BOOST_Y + (BOX_Y - BOOST_Y) * e
@@ -211,23 +193,19 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
                 }
                 Particles.GLINT -> {
                     val s = fx.size[i] * sin(life * PI.toFloat())
-                    if (s > 0.2f) {
-                        p.style = Paint.Style.FILL; p.color = Theme.alpha(Theme.WHITE, (life * 255).toInt())
-                        val x = fx.x[i]; val y = fx.y[i]
-                        g.path.reset(); g.path.moveTo(x, y - s * 1.6f); g.path.quadTo(x, y, x + s * 1.6f, y); g.path.quadTo(x, y, x, y + s * 1.6f); g.path.quadTo(x, y, x - s * 1.6f, y); g.path.quadTo(x, y, x, y - s * 1.6f)
-                        cv.drawPath(g.path, p)
-                    }
+                    if (s > 0.2f) g.glint(cv, fx.x[i], fx.y[i], s * 1.6f, (life * 255).toInt())
                 }
             }
         }
     }
 
     private fun popups(cv: Canvas, game: Game) {
-        for (pp in game.popups) {
+        for (pi in 0 until game.popups.size) {
+            val pp = game.popups[pi]
             val t = pp.t
             val pop = if (t < 0.15f) t / 0.15f * 1.25f else 1.25f - 0.25f * min(1f, (t - 0.15f) / 0.15f)
             cv.save(); cv.translate(pp.x, pp.y - 46f * t); cv.scale(pop, pop)
-            g.text(cv, pp.text, 0f, 0f, 26f, Theme.alpha(Theme.WHITE, ((1f - t * t) * 255).toInt()), outline = Theme.alpha(Theme.pal[pp.c][2], ((1f - t * t) * 255).toInt()))
+            g.text(cv, pp.text, 0f, 0f, 26f, Theme.alpha(Theme.pal[pp.c][0], ((1f - t * t) * 255).toInt()))
             cv.restore()
         }
     }

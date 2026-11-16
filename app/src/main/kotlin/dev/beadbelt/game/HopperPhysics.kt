@@ -2,7 +2,11 @@ package dev.beadbelt.game
 
 import kotlin.math.sqrt
 
-class Body(val c: Int, var x: Float, var y: Float) { var vx = 0f; var vy = 0f }
+class Body(val c: Int, var x: Float, var y: Float) {
+    var vx = 0f; var vy = 0f
+    /** Сглаженная позиция для рисования: гасит микро-дрожь шариков в куче. */
+    var rx = x; var ry = y
+}
 
 /**
  * Круги в воронке: гравитация, столкновения друг с другом и со стенками.

@@ -6,7 +6,7 @@ import java.util.Random
  * Пул частиц без аллокаций: параллельные массивы фиксированного размера.
  * Виды: искра (с гравитацией), конфетти, расширяющееся кольцо, мерцающий блик.
  */
-class Particles(private val cap: Int = 480) {
+class Particles(private val cap: Int = 200) {
     companion object {
         const val SPARK = 0
         const val CONFETTI = 1

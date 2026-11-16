@@ -24,11 +24,9 @@ class Assets(scale: Float) {
         const val TRAY_H = 84f
         const val BOARD_Y0 = 100f   // верх запечённого поля (воронка + лента)
         const val BOARD_H = 396f
-        const val GLASS_Y0 = 110f   // верх слоя бликов воронки
-        const val GLASS_H = 235f
     }
 
-    private val k = scale.coerceIn(1f, 3f)
+    val k = scale.coerceIn(1f, 2f)        // «лёгкое» разрешение запекания: меньше памяти и заливки
     private val white = Theme.WHITE
 
     private fun bitmap(wLogical: Float, hLogical: Float): Bitmap =
@@ -163,32 +161,21 @@ class Assets(scale: Float) {
 
     val board: Bitmap = bakeBoard()
 
-    /** Верхний слой стекла: блик и затемнение у стенок. Рисуется ПОВЕРХ шариков воронки. */
-    val glass: Bitmap = bakeGlass()
+    /** Гнездо ленты: тёмная лунка со светлым ободком — чётко видно, где место для шарика. */
+    val pocket: Bitmap = bakePocket()
 
-    private fun bakeGlass(): Bitmap {
-        val bmp = bitmap(W, GLASS_H)
-        val cv = Canvas(bmp)
-        cv.scale(k, k); cv.translate(0f, -GLASS_Y0)
+    private fun bakePocket(): Bitmap {
+        val bmp = bitmap(30f, 30f)
+        val cv = Canvas(bmp); cv.scale(k, k)
         val q = paint()
-        val funnel = Path()
-        funnel.moveTo(WALLS[0][0], WALLS[0][1])
-        for (w in WALLS) funnel.lineTo(w[2], w[3])
-        val rim = Path(funnel)             // открытый контур для обводки: верх воронки открыт
-        funnel.close()
-        cv.save(); cv.clipPath(funnel)
-        // диагональная полоса света
-        q.style = Paint.Style.FILL
-        q.shader = LinearGradient(30f, 120f, 150f, 330f, intArrayOf(0, Theme.alpha(white, 46), Theme.alpha(white, 10), 0), floatArrayOf(0.15f, 0.3f, 0.4f, 0.55f), Shader.TileMode.CLAMP)
-        cv.drawRect(0f, GLASS_Y0, W, GLASS_Y0 + GLASS_H, q)
-        q.shader = LinearGradient(230f, 120f, 330f, 300f, intArrayOf(0, Theme.alpha(white, 22), 0), floatArrayOf(0.1f, 0.22f, 0.34f), Shader.TileMode.CLAMP)
-        cv.drawRect(0f, GLASS_Y0, W, GLASS_Y0 + GLASS_H, q)
-        q.shader = null
-        // затемнение у стенок — «толщина» стекла
-        q.style = Paint.Style.STROKE; q.strokeJoin = Paint.Join.ROUND
-        q.strokeWidth = 26f; q.color = Theme.alpha(0xFF0A1850.toInt(), 46); cv.drawPath(rim, q)
-        q.strokeWidth = 12f; q.color = Theme.alpha(0xFF0A1850.toInt(), 40); cv.drawPath(rim, q)
+        q.color = Theme.alpha(white, 60); cv.drawCircle(15f, 16f, 14f, q)
+        q.color = 0xFF060C26.toInt(); cv.drawCircle(15f, 15f, 13.6f, q)
+        cv.save(); cv.clipPath(Path().apply { addCircle(15f, 15f, 13.6f, Path.Direction.CW) })
+        q.shader = LinearGradient(0f, 1f, 0f, 16f, Theme.alpha(Theme.BLACK, 150), 0, Shader.TileMode.CLAMP)
+        cv.drawRect(0f, 1f, 30f, 16f, q); q.shader = null
         cv.restore()
+        q.style = Paint.Style.STROKE; q.strokeWidth = 1.8f; q.color = 0xD28AA2E6.toInt()
+        cv.drawCircle(15f, 15f, 13.6f, q)
         return bmp
     }
 
