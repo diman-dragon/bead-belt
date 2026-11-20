@@ -12,6 +12,9 @@ const val BTN_RETURN = 7
 const val BTN_NEXT = 8
 const val BTN_MENU = 9
 const val BTN_RESUME = 10
+const val BTN_UNDO = 11
+const val BTN_HINT = 12
+const val BTN_SHUFFLE = 13
 const val BTN_LEVEL = 1000      // BTN_LEVEL + номер уровня
 
 /** Раскладка экранов в логических координатах 360x640 — общая для рисования и для нажатий. */

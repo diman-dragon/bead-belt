@@ -21,6 +21,8 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
     private val doneText = NumText()
     private val rocketText = NumText()
     private val returnText = NumText()
+    private val undoText = NumText()
+    private val hintText = NumText()
     private var titleId = -1
     private var title = ""
 
@@ -31,6 +33,16 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         hud(cv, game, ui, hint, hintAlpha)
         cv.drawBitmap(a.board, null, g.rect.also { it.set(0f, Assets.BOARD_Y0, W, Assets.BOARD_Y0 + Assets.BOARD_H) }, boardPaint)
         trays(cv, game, ui)
+        val hc = game.hintedCol
+        if (hc != null && hc in game.cols.indices && game.cols[hc].isNotEmpty()) {
+            val hx = game.colX[hc]
+            val hy = TRAY_Y - 17f * game.cols[hc][0].d
+            val p = g.p
+            p.style = Paint.Style.STROKE; p.strokeWidth = 4f; p.shader = null
+            p.color = Theme.alpha(Theme.GOLD, (150 + 105 * sin(ui.clock * 8f)).toInt())
+            g.rect.set(hx - 45f, hy - 48f, hx + 45f, hy + 48f)
+            cv.drawRoundRect(g.rect, 20f, 20f, p)
+        }
         hopperMarbles(cv, game)
         beltMarbles(cv, game, ui)
         boxes(cv, game)
@@ -252,19 +264,33 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
     // ---------- бустеры ----------
 
     private fun boosters(cv: Canvas, game: Game, ui: Ui) {
-        booster(cv, ROCKET_X, true, progress.rockets, Progress.ROCKET_PRICE, game, ui)
-        booster(cv, RETURN_X, false, progress.returns, Progress.RETURN_PRICE, game, ui)
+        booster(cv, ROCKET_X, BTN_ROCKET, progress.rockets, Progress.ROCKET_PRICE, game, ui) { cv.rotate(-20f); g.rocket(cv, 1f, false) }
+        booster(cv, UNDO_X, BTN_UNDO, progress.undos, Progress.UNDO_PRICE, game, ui) { g.undoIcon(cv) }
+        booster(cv, HINT_X, BTN_HINT, progress.hints, Progress.HINT_PRICE, game, ui) { g.hintIcon(cv) }
+        booster(cv, RETURN_X, BTN_RETURN, progress.returns, Progress.RETURN_PRICE, game, ui) { g.returnIcon(cv) }
         g.coinPill(cv, 180f, BOOST_Y, progress.coins)
     }
 
-    private fun booster(cv: Canvas, x: Float, rocket: Boolean, have: Int, price: Int, game: Game, ui: Ui) {
-        val usable = game.state == State.PLAY && progress.canAfford(rocket)
-        g.roundButton(cv, x, BOOST_Y, Layout.BOOST_R, ui.pr(if (rocket) BTN_ROCKET else BTN_RETURN), usable)
+    private fun booster(cv: Canvas, x: Float, btnId: Int, have: Int, price: Int, game: Game, ui: Ui, drawIcon: () -> Unit) {
+        val typeStr = when (btnId) {
+            BTN_ROCKET -> "rocket"
+            BTN_UNDO -> "undo"
+            BTN_HINT -> "hint"
+            BTN_RETURN -> "return"
+            else -> ""
+        }
+        val usable = game.state == State.PLAY && progress.canAfford(typeStr)
+        g.roundButton(cv, x, BOOST_Y, Layout.BOOST_R, ui.pr(btnId), usable)
         cv.save(); cv.translate(x, BOOST_Y)
-        if (rocket) { cv.rotate(-20f); g.rocket(cv, 1f, false) } else g.returnIcon(cv)
+        drawIcon()
         cv.restore()
         if (!usable) { g.p.style = Paint.Style.FILL; g.p.shader = null; g.p.color = Theme.alpha(0xFF0A1535.toInt(), 120); cv.drawCircle(x, BOOST_Y, Layout.BOOST_R, g.p) }
-        val label = if (have > 0) (if (rocket) rocketText else returnText).of(have) else (if (rocket) ROCKET_LABEL else RETURN_LABEL)
+        val label = if (have > 0) when (btnId) {
+            BTN_ROCKET -> rocketText.of(have)
+            BTN_UNDO -> undoText.of(have)
+            BTN_HINT -> hintText.of(have)
+            else -> returnText.of(have)
+        } else "$price"
         g.p.style = Paint.Style.FILL; g.p.shader = null
         g.p.color = Theme.INK; cv.drawCircle(x + 19f, BOOST_Y - 19f, 12.5f, g.p)
         g.p.color = if (have > 0) Theme.GREEN else Theme.GOLD; cv.drawCircle(x + 19f, BOOST_Y - 19f, 11f, g.p)

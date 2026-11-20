@@ -14,8 +14,10 @@ const val BOX_H = 92f
 const val BODY_R = 8.5f      // радиус шарика в воронке
 
 // кнопки бустеров (нужны и игре — для следа ракеты, и интерфейсу)
-const val ROCKET_X = 90f
-const val RETURN_X = 270f
+const val ROCKET_X = 72f
+const val UNDO_X = 126f
+const val HINT_X = 234f
+const val RETURN_X = 288f
 const val BOOST_Y = 614f
 
 const val EV_TAP = 0

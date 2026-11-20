@@ -215,6 +215,8 @@ class GameView(context: Context) : View(context) {
                     Layout.inCircle(x, y, Layout.HUD_R_X, Layout.HUD_Y, Layout.HUD_R + 6f) -> BTN_RESTART
                     Layout.inCircle(x, y, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R + 6f) -> BTN_SOUND
                     Layout.inCircle(x, y, ROCKET_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_ROCKET
+                    Layout.inCircle(x, y, UNDO_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_UNDO
+                    Layout.inCircle(x, y, HINT_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_HINT
                     Layout.inCircle(x, y, RETURN_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_RETURN
                     else -> BTN_NONE
                 }
@@ -266,15 +268,17 @@ class GameView(context: Context) : View(context) {
             BTN_BACK, BTN_MENU -> go(Screen.MENU)
             BTN_RESTART -> startLevel(current)
             BTN_RESUME -> { paused = false; lastNs = 0L; smoothDt = 0f }
-            BTN_ROCKET -> if (g != null) useBooster(true, g)
-            BTN_RETURN -> if (g != null) useBooster(false, g)
+            BTN_ROCKET -> if (g != null) useSpecialBooster("rocket", g) { g.useRocket() }
+            BTN_UNDO -> if (g != null) useSpecialBooster("undo", g) { g.undo() }
+            BTN_HINT -> if (g != null) useSpecialBooster("hint", g) { g.getHint() != null }
+            BTN_RETURN -> if (g != null) useSpecialBooster("return", g) { g.returnMarbles() }
             BTN_NEXT -> if (g != null) startLevel(if (g.state == State.WON && current < LEVEL_COUNT) current + 1 else current)
         }
     }
 
-    private fun useBooster(rocket: Boolean, g: Game) {
-        if (g.state != State.PLAY || !progress.canAfford(rocket)) return
-        if (if (rocket) g.useRocket() else g.returnMarbles()) progress.spend(rocket)
+    private fun useSpecialBooster(type: String, g: Game, action: () -> Boolean) {
+        if (g.state != State.PLAY || !progress.canAfford(type)) return
+        if (action()) progress.spend(type)
     }
 
     // ---------- рисование ----------

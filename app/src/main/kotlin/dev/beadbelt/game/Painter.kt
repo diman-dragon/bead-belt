@@ -229,6 +229,23 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         p.strokeCap = Paint.Cap.BUTT
     }
 
+    fun undoIcon(cv: Canvas) {
+        p.style = Paint.Style.STROKE; p.strokeWidth = 3.4f; p.strokeCap = Paint.Cap.ROUND; p.color = Theme.WHITE; p.shader = null
+        rect.set(-9f, -6f, 9f, 12f); cv.drawArc(rect, 140f, 260f, false, p)
+        p.style = Paint.Style.FILL
+        path.reset(); path.moveTo(14f, -4f); path.lineTo(4f, -5f); path.lineTo(9f, -13f); path.close(); cv.drawPath(path, p)
+        p.strokeCap = Paint.Cap.BUTT
+    }
+
+    fun hintIcon(cv: Canvas) {
+        p.style = Paint.Style.FILL; p.shader = null
+        p.color = 0xFFFFC21F.toInt(); cv.drawCircle(0f, -3f, 9f, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = 3f; p.color = 0xFF7A4F00.toInt()
+        cv.drawCircle(0f, -3f, 9f, p)
+        p.style = Paint.Style.FILL; p.color = 0xFF8892B0.toInt()
+        rect.set(-3.5f, 5f, 3.5f, 11f); cv.drawRect(rect, p)
+    }
+
     private fun vecBack(cv: Canvas, x: Float, y: Float) {
         p.style = Paint.Style.STROKE; p.strokeWidth = 3.8f; p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND; p.color = Theme.WHITE; p.shader = null
         path.reset(); path.moveTo(x + 4f, y - 9f); path.lineTo(x - 5f, y); path.lineTo(x + 4f, y + 9f); cv.drawPath(path, p)

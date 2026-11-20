@@ -13,6 +13,20 @@ class Spawn(val c: Int, val x: Float)
 class RocketFx(val boxIdx: Int) { var t = 0f }
 class Popup(val text: String, val x: Float, val y: Float, val c: Int) { var t = 0f }
 
+class GameSnapshot(
+    val cols: List<List<Tray>>,
+    val stacks: List<ArrayDeque<Int>>,
+    val boxes: Array<Box?>,
+    val slots: IntArray,
+    val born: FloatArray,
+    val phase: Float,
+    val spawnQ: ArrayDeque<Spawn>,
+    val hopper: ArrayList<Body>,
+    val done: Int,
+    val state: State,
+    val elevatorOpen: Boolean
+)
+
 enum class State { PLAY, WON, LOST }
 
 /** Правила и симуляция без зависимостей от Android. */
@@ -33,6 +47,9 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
         for (i in 0 until SLOTS) arr[i] = stacks[i].removeFirstOrNull()?.let { c -> Box(c).also { b -> b.locked = i == level.elevator } }
     }
     private var elevatorOpen = level.elevator < 0
+
+    val undoStack = ArrayDeque<GameSnapshot>()
+    var hintedCol: Int? = null
 
     val n = level.belt
     val sp = Geo.L / n
@@ -72,9 +89,87 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
 
     // ---------- ввод ----------
 
+    private fun saveSnapshot() {
+        if (undoStack.size >= 10) undoStack.removeFirst()
+        undoStack.addLast(GameSnapshot(
+            cols = cols.map { col -> col.map { Tray(it.c, it.n, it.arrow).also { t -> t.d = it.d } }.toMutableList() },
+            stacks = stacks.map { ArrayDeque(it) },
+            boxes = boxes.map { b -> b?.let { Box(it.c).also { nb -> nb.n = it.n; nb.res = it.res; nb.pop = it.pop; nb.enter = it.enter; nb.locked = it.locked } } }.toTypedArray(),
+            slots = slots.clone(),
+            born = born.clone(),
+            phase = phase,
+            spawnQ = ArrayDeque(spawnQ.map { Spawn(it.c, it.x) }),
+            hopper = ArrayList(hopper.map { Body(it.c, it.x, it.y).also { nb -> nb.vx = it.vx; nb.vy = it.vy; nb.rx = it.rx; nb.ry = it.ry; nb.r = it.r } }),
+            done = done,
+            state = state,
+            elevatorOpen = elevatorOpen
+        ))
+    }
+
+    fun undo(): Boolean {
+        if (undoStack.isEmpty() || state != State.PLAY) return false
+        val snap = undoStack.removeLast()
+        for (i in cols.indices) {
+            cols[i].clear()
+            cols[i].addAll(snap.cols[i])
+        }
+        for (i in stacks.indices) {
+            stacks[i].clear()
+            stacks[i].addAll(snap.stacks[i])
+        }
+        for (i in boxes.indices) {
+            boxes[i] = snap.boxes[i]
+        }
+        System.arraycopy(snap.slots, 0, slots, 0, slots.size)
+        System.arraycopy(snap.born, 0, born, 0, born.size)
+        phase = snap.phase
+        spawnQ.clear()
+        spawnQ.addAll(snap.spawnQ)
+        hopper.clear()
+        hopper.addAll(snap.hopper)
+        done = snap.done
+        state = snap.state
+        elevatorOpen = snap.elevatorOpen
+        flyers.clear()
+        rockets.clear()
+        popups.clear()
+        hintedCol = null
+        onEvent(EV_ROCKET, 0)
+        return true
+    }
+
+    fun getHint(): Int? {
+        if (state != State.PLAY) return null
+        val openCols = cols.indices.filter { cols[it].isNotEmpty() }
+        if (openCols.isEmpty()) return null
+        val match = openCols.firstOrNull { i ->
+            val c = cols[i][0].c
+            boxes.any { b -> b != null && b.c == c && !b.locked && b.n + b.res < BOX }
+        }
+        hintedCol = match ?: openCols[0]
+        return hintedCol
+    }
+
+    fun shuffleTrays(): Boolean {
+        if (state != State.PLAY) return false
+        val allTrays = ArrayList<Tray>()
+        cols.forEach { col -> allTrays.addAll(col); col.clear() }
+        allTrays.shuffle(rnd)
+        allTrays.forEachIndexed { index, tray ->
+            val colIdx = index % cols.size
+            tray.d = cols[colIdx].size.toFloat()
+            cols[colIdx].add(tray)
+        }
+        hintedCol = null
+        onEvent(EV_ROCKET, 0)
+        return true
+    }
+
     /** Тап по колонке: лоток высыпается; если на нём стрелки — запускаются и соседние лотки. */
     fun tapColumn(i: Int): Boolean {
         if (state != State.PLAY || i !in cols.indices || cols[i].isEmpty()) return false
+        saveSnapshot()
+        hintedCol = null
         val first = cols[i].removeAt(0)
         release(first, colX[i])
         if (first.arrow and 1 != 0 && i > 0 && cols[i - 1].isNotEmpty()) release(cols[i - 1].removeAt(0), colX[i - 1])
