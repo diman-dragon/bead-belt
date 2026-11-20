@@ -99,7 +99,7 @@ class Game(val level: Level, private val onEvent: (Int, Int) -> Unit) {
             born = born.clone(),
             phase = phase,
             spawnQ = ArrayDeque(spawnQ.map { Spawn(it.c, it.x) }),
-            hopper = ArrayList(hopper.map { Body(it.c, it.x, it.y).also { nb -> nb.vx = it.vx; nb.vy = it.vy; nb.rx = it.rx; nb.ry = it.ry; nb.r = it.r } }),
+            hopper = ArrayList(hopper.map { Body(it.c, it.x, it.y).also { nb -> nb.vx = it.vx; nb.vy = it.vy; nb.rx = it.rx; nb.ry = it.ry } }),
             done = done,
             state = state,
             elevatorOpen = elevatorOpen
