@@ -14,7 +14,8 @@ const val BTN_MENU = 9
 const val BTN_RESUME = 10
 const val BTN_UNDO = 11
 const val BTN_HINT = 12
-const val BTN_SHUFFLE = 13
+const val BTN_SKIP = 14
+const val BTN_PAUSE = 15
 const val BTN_LEVEL = 1000      // BTN_LEVEL + номер уровня
 
 /** Раскладка экранов в логических координатах 360x640 — общая для рисования и для нажатий. */
@@ -44,13 +45,19 @@ object Layout {
     val LV_ROWS = (LEVEL_COUNT + LV_COLS - 1) / LV_COLS
     val LV_CONTENT = LV_ROWS * LV_PITCH
 
-    // итоговая карточка
-    val END_CARD = floatArrayOf(36f, 150f, 324f, 490f)
+    // итоговая карточка победы
+    val END_CARD_WIN  = floatArrayOf(36f, 150f, 324f, 490f)
     val END_NEXT = floatArrayOf(60f, 374f, 300f, 428f)
     val END_MENU = floatArrayOf(60f, 440f, 300f, 478f)
+    // итоговая карточка проигрыша (чуть выше — вмещает две кнопки)
+    val END_CARD_LOSE = floatArrayOf(36f, 120f, 324f, 500f)
+    val END_RETRY = floatArrayOf(60f, 364f, 300f, 414f)
+    val END_SKIP  = floatArrayOf(60f, 426f, 300f, 476f)
 
     // пауза
-    val PAUSE_BTN = floatArrayOf(60f, 300f, 300f, 356f)
+    val PAUSE_RESUME = floatArrayOf(60f, 260f, 300f, 316f)
+    val PAUSE_SKIP = floatArrayOf(60f, 332f, 300f, 388f)
+    val PAUSE_MENU = floatArrayOf(60f, 404f, 300f, 460f)
 
     fun inRect(r: FloatArray, x: Float, y: Float) = x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]
     fun inCircle(x: Float, y: Float, cx: Float, cy: Float, r: Float): Boolean { val dx = x - cx; val dy = y - cy; return dx * dx + dy * dy <= r * r }

@@ -10,11 +10,6 @@ import kotlin.math.sin
 
 /** Рисует игровое поле: HUD, лотки, воронку, ленту, коробки, эффекты и бустеры. */
 class GameRenderer(private val g: Painter, private val a: Assets, private val progress: Progress) {
-    private companion object {
-        const val ROCKET_LABEL = "${Progress.ROCKET_PRICE}"
-        const val RETURN_LABEL = "${Progress.RETURN_PRICE}"
-    }
-
     private val pt = FloatArray(3)
     private val boardPaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val occText = NumText()

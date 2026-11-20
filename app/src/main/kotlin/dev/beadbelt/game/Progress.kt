@@ -33,8 +33,6 @@ class Progress(context: Context) {
         return r
     }
 
-    fun canAfford(rocket: Boolean) = (if (rocket) rockets else returns) > 0 || coins >= (if (rocket) ROCKET_PRICE else RETURN_PRICE)
-
     fun canAfford(type: String): Boolean = when (type) {
         "rocket" -> rockets > 0 || coins >= ROCKET_PRICE
         "return" -> returns > 0 || coins >= RETURN_PRICE
@@ -44,12 +42,6 @@ class Progress(context: Context) {
     }
 
     /** Списывает бустер (бесплатный, если есть, иначе за монеты). */
-    fun spend(rocket: Boolean) {
-        if (rocket) { if (rockets > 0) rockets-- else coins -= ROCKET_PRICE }
-        else { if (returns > 0) returns-- else coins -= RETURN_PRICE }
-        save()
-    }
-
     fun spend(type: String) {
         when (type) {
             "rocket" -> if (rockets > 0) rockets-- else coins -= ROCKET_PRICE

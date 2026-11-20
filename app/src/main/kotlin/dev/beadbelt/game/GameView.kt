@@ -202,12 +202,21 @@ class GameView(context: Context) : View(context) {
             }
             Screen.PLAY -> {
                 val g = game ?: return BTN_NONE
-                if (paused) return if (Layout.inRect(Layout.PAUSE_BTN, x, y)) BTN_RESUME else BTN_BLOCK
+                if (paused) {
+                    return when {
+                        Layout.inRect(Layout.PAUSE_RESUME, x, y) -> BTN_RESUME
+                        Layout.inRect(Layout.PAUSE_SKIP, x, y) -> BTN_SKIP
+                        Layout.inRect(Layout.PAUSE_MENU, x, y) -> BTN_MENU
+                        else -> BTN_BLOCK
+                    }
+                }
                 if (g.state != State.PLAY && ui.endT > 0.4f) {
                     if (ui.endT < 0.9f) return BTN_BLOCK
                     return when {
-                        Layout.inRect(Layout.END_NEXT, x, y) -> BTN_NEXT
-                        Layout.inRect(Layout.END_MENU, x, y) -> BTN_MENU
+                        g.state == State.LOST && Layout.inRect(Layout.END_RETRY, x, y) -> BTN_NEXT
+                        g.state == State.LOST && Layout.inRect(Layout.END_SKIP, x, y) -> BTN_SKIP
+                        g.state == State.WON && Layout.inRect(Layout.END_NEXT, x, y) -> BTN_NEXT
+                        g.state == State.WON && Layout.inRect(Layout.END_MENU, x, y) -> BTN_MENU
                         else -> BTN_BLOCK
                     }
                 }
@@ -218,6 +227,7 @@ class GameView(context: Context) : View(context) {
                     Layout.inCircle(x, y, UNDO_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_UNDO
                     Layout.inCircle(x, y, HINT_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_HINT
                     Layout.inCircle(x, y, RETURN_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_RETURN
+                    y < 70f -> BTN_PAUSE
                     else -> BTN_NONE
                 }
             }
@@ -267,7 +277,22 @@ class GameView(context: Context) : View(context) {
             BTN_SOUND -> { progress.sound = !progress.sound; sound.enabled = progress.sound }
             BTN_BACK, BTN_MENU -> go(Screen.MENU)
             BTN_RESTART -> startLevel(current)
+            BTN_PAUSE -> { paused = true }
             BTN_RESUME -> { paused = false; lastNs = 0L; smoothDt = 0f }
+            BTN_SKIP -> {
+                paused = false
+                val tgt = g ?: return
+                if (tgt.state == State.PLAY || tgt.state == State.LOST) {
+                    tgt.state = State.WON
+                    tgt.done = tgt.total
+                    tgt.shake = 0f
+                    repeat(40) { tgt.fx.confetti(java.util.Random(it.toLong()), COLOR_COUNT) }
+                    reward = progress.win(current)
+                    ui.endT = 0f
+                    sound.event(EV_WIN, 0)
+                    performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                }
+            }
             BTN_ROCKET -> if (g != null) useSpecialBooster("rocket", g) { g.useRocket() }
             BTN_UNDO -> if (g != null) useSpecialBooster("undo", g) { g.undo() }
             BTN_HINT -> if (g != null) useSpecialBooster("hint", g) { g.getHint() != null }

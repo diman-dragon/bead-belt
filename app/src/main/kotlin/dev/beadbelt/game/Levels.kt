@@ -95,8 +95,7 @@ object Levels {
     fun make(id: Int): Level {
         for (attempt in 0 until 20) {
             val r = Rng(id * 7919 + attempt * 104729 + 13)
-            // 1–100: прежняя прогрессия (уровни не меняются). 101–200: все 8 цветов, коробок на цвет 4 → 5,
-            // больше стрелок, лифт на каждом втором уровне.
+            // 1–100: прежняя прогрессия. 101–200: все 8 цветов, коробок 4 → 5, больше стрелок, лифт каждый второй.
             val hard = id > 100
             val k = if (hard) COLOR_COUNT else min(3 + (id - 1) / 2, COLOR_COUNT)
             val m = if (hard) 4 + (id - 101) / 50 else min(2 + id / 6, 4)
@@ -119,8 +118,8 @@ object Levels {
             val raw = List(nCols) { ArrayList<TrayDef>() }
             trays.forEachIndexed { i, t -> raw[i % nCols].add(t) }
 
-            // стрелки с 8-го уровня, лифт с 15-го (каждый третий)
-            val pArrow = if (id < 8) 0.0 else if (hard) min(0.25 + (id - 100) / 400.0, 0.5) else min(0.15 + id / 400.0, 0.35)
+            // стрелки с 8-го уровня, лифт с 15-го (каждый третий в 1–100, каждый второй в 101–200)
+            val pArrow = if (id == 18 || id < 8) 0.0 else if (hard) min(0.25 + (id - 100) / 400.0, 0.5) else min(0.15 + id / 400.0, 0.35)
             val columns = raw.mapIndexed { ci, col ->
                 col.map { t ->
                     if (r.next() < pArrow) {
@@ -132,11 +131,11 @@ object Levels {
                     } else t
                 }
             }
-            val elevator = if (id >= 15 && id % (if (hard) 2 else 3) == 0) r.nextInt(SLOTS) else -1
+            val elevator = if (id == 18) -1 else if (id >= 15 && id % (if (hard) 2 else 3) == 0) r.nextInt(SLOTS) else -1
 
             val probe = Level(id, columns, boxes, 30, elevator)
             val minCap = (8..30).firstOrNull { solvable(probe, it) } ?: continue
-            var belt = min(30, maxOf(10, minCap + maxOf(0, 5 - id / 12)))
+            var belt = if (id == 18) 30 else min(30, maxOf(10, minCap + maxOf(0, 5 - id / 12)))
             while (belt < 30 && !solvable(probe, belt)) belt++
             if (!solvable(probe, belt)) continue
             return Level(id, columns, boxes, belt, elevator)

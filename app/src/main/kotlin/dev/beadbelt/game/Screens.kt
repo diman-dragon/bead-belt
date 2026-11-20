@@ -127,7 +127,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
 
         val won = game.state == State.WON
         val sc = 0.6f + 0.4f * easeOutBack(a)
-        val c = Layout.END_CARD
+        val c = if (won) Layout.END_CARD_WIN else Layout.END_CARD_LOSE
         cv.save(); cv.translate(180f, (c[1] + c[3]) / 2f); cv.scale(sc, sc); cv.translate(-180f, -(c[1] + c[3]) / 2f)
         cardFrame(cv, c)
         p.style = Paint.Style.FILL
@@ -151,14 +151,21 @@ class Screens(private val g: Painter, private val progress: Progress, private va
             else -> "Уровень ${game.level.id} пройден"
         }
         g.text(cv, sub, 180f, c[1] + 152f, 15f, Theme.alpha(Theme.WHITE, 200), Theme.fontMedium, shadow = false)
-        if (won) {      // награда «набегает»
+
+        if (won) {
+            // награда «набегает»
             val shown = (reward * ((ui.endT - 0.8f) / 0.7f).coerceIn(0f, 1f)).toInt()
             g.coin(cv, 150f, c[1] + 182f, 13f)
             g.text(cv, "+$shown", 170f, c[1] + 190f, 24f, Theme.GOLD, align = Paint.Align.LEFT)
+            val n = Layout.END_NEXT; val m = Layout.END_MENU
+            g.button(cv, n[0], n[1], n[2], n[3], if (!last) "Дальше" else "Ещё раз", 0, ui.pr(BTN_NEXT))
+            g.button(cv, m[0], m[1], m[2], m[3], "Меню", 1, ui.pr(BTN_MENU))
+        } else {
+            // при проигрыше: «Ещё раз» + «Пропустить уровень»
+            val r = Layout.END_RETRY; val s = Layout.END_SKIP
+            g.button(cv, r[0], r[1], r[2], r[3], "Ещё раз", 0, ui.pr(BTN_NEXT))
+            g.button(cv, s[0], s[1], s[2], s[3], "Пропустить уровень", 1, ui.pr(BTN_SKIP))
         }
-        val n = Layout.END_NEXT; val m = Layout.END_MENU
-        g.button(cv, n[0], n[1], n[2], n[3], if (won && !last) "Дальше" else "Ещё раз", 0, ui.pr(BTN_NEXT))
-        g.button(cv, m[0], m[1], m[2], m[3], "Меню", 1, ui.pr(BTN_MENU))
         cv.restore()
     }
 
@@ -177,9 +184,13 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         val p = g.p
         p.style = Paint.Style.FILL; p.shader = null
         p.color = Theme.alpha(0xFF050B24.toInt(), 170); cv.drawRect(-500f, -500f, W + 500f, H + 500f, p)
-        g.text(cv, "Пауза", 180f, 250f, 40f)
-        val b = Layout.PAUSE_BTN
-        g.button(cv, b[0], b[1], b[2], b[3], "Продолжить", 0, ui.pr(BTN_RESUME))
+        g.text(cv, "Пауза", 180f, 210f, 40f)
+        val r = Layout.PAUSE_RESUME
+        val s = Layout.PAUSE_SKIP
+        val m = Layout.PAUSE_MENU
+        g.button(cv, r[0], r[1], r[2], r[3], "Продолжить", 0, ui.pr(BTN_RESUME))
+        g.button(cv, s[0], s[1], s[2], s[3], "Пропустить уровень", 1, ui.pr(BTN_SKIP))
+        g.button(cv, m[0], m[1], m[2], m[3], "В меню", 2, ui.pr(BTN_MENU))
     }
 
 }
