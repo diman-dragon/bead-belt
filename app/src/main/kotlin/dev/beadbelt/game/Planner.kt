@@ -3,19 +3,17 @@ package dev.beadbelt.game
 import kotlin.math.min
 
 /**
- * Дискретная модель партии — общая для генератора уровней, подсказок и тестов.
+ * Дискретная модель партии — для генератора уровней и подсказок.
  *
- * Один ход — тап по колонке: лоток (и соседи по стрелкам) высыпается, шарики пачки добавляются к тем, что лежат
- * на ленте, и коробки забирают своё. Исход хода зависит только от набора шариков, но не от физики воронки:
- * игра бронирует шарики за коробками в момент тапа (`Game.assign`), а модель делает то же самое в [settle].
+ * Один ход — тап по колонке: лоток (и соседи по стрелкам) высыпается, шарики пачки оказываются на ленте,
+ * коробки забирают своё, а освободившееся место тут же занимает следующая коробка.
  *
- * Порядок коробок: лента на нижней прямой идёт справа налево, так что шарик сначала проезжает коробку 3, затем 2, 1, 0;
- * при равных цветах первой берёт коробка с бо́льшим номером. (Раньше решатель перебирал 0→3, то есть наоборот, и
- * считал, что шарики лотков идут строго по очереди, поэтому уровни вроде 18-го «проходились» только на бумаге.)
+ * Модель сознательно ПРИБЛИЖЁННАЯ. В настоящей игре шарики падают в коробки по мере проезда над ними, а порядок
+ * шариков задаёт воронка, где они перемешиваются, и это непредсказуемо — так и задумано. Поэтому модель не
+ * «предсказывает» исход хода, а оценивает его: подсказка перепланирует после каждого хода от реального положения,
+ * а проходимость уровней проверяется статистически на многих раскладках физики (tools/README.md).
  *
- * Места на ленте. Ничьи шарики лежат на ленте, пока их кто-нибудь не заберёт, поэтому они занимают места.
- * Шарики, закреплённые за коробкой, которая ещё не выехала (следующая в стопке или лифт под замком), тоже ждут
- * на ленте. В худшем случае они въезжают раньше шариков, которые открывают коробку, а потому считаются наравне с ничьими.
+ * Порядок коробок: лента на нижней прямой идёт справа налево, так что шарик сначала проезжает коробку 3, затем 2, 1, 0.
  */
 class Board(val cols: List<List<TrayDef>>, val stacks: List<IntArray>, val elevator: Int, val cap: Int) {
     val totalBoxes = stacks.sumOf { it.size }
@@ -27,8 +25,6 @@ class Board(val cols: List<List<TrayDef>>, val stacks: List<IntArray>, val eleva
 
 /** Состояние партии в модели. Копируется дёшево. */
 class PState(val heads: IntArray, val pos: IntArray, val actN: IntArray, val belt: IntArray, var open: Boolean, var total: Int, var done: Int) {
-    /** Шарики, закреплённые за ещё не выехавшими коробками (считаются внутри одного хода, в ключ не входят). */
-    var waiting = 0
     fun copy() = PState(heads.clone(), pos.clone(), actN.clone(), belt.clone(), open, total, done)
 
     /** Ключ для мемоизации: головы колонок, позиции стопок, наполнение коробок, лента, лифт. */
@@ -62,8 +58,7 @@ object Planner {
     ).also { settle(b, it) }
 
     /** Коробки забирают шарики с ленты. Порядок проверки — порядок, в котором шарик проезжает коробки. */
-    fun settle(b: Board, s: PState, lockedAtStart: Boolean = false) {
-        val cascaded = BooleanArray(SLOTS)
+    fun settle(b: Board, s: PState) {
         var changed = true
         while (changed) {
             changed = false
@@ -73,11 +68,8 @@ object Planner {
                 if (i == b.elevator && !s.open) continue          // лифт закрыт, пока ничего не собрано
                 val c = st[s.pos[i]]
                 val take = min(BOX - s.actN[i], s.belt[c])
-                if (take > 0) {
-                    s.belt[c] -= take; s.total -= take; s.actN[i] += take; changed = true
-                    if (cascaded[i] || (i == b.elevator && lockedAtStart)) s.waiting += take
-                }
-                if (s.actN[i] == BOX) { s.done++; s.open = true; s.actN[i] = 0; s.pos[i]++; cascaded[i] = true; changed = true }
+                if (take > 0) { s.belt[c] -= take; s.total -= take; s.actN[i] += take; changed = true }
+                if (s.actN[i] == BOX) { s.done++; s.open = true; s.actN[i] = 0; s.pos[i]++; changed = true }
             }
         }
     }
@@ -92,23 +84,18 @@ object Planner {
         return batch
     }
 
-    /**
-     * Результат тапа по `col` или null, если ход невозможен или ленте не хватает места.
-     * Шарики пачки добавляются разом, затем коробки забирают своё. Места: ничьи шарики + ожидающие коробку
-     * + (если часть пачки закреплена и ещё должна въехать) один свободный слот, чтобы они могли въезжать.
-     */
+    /** Результат тапа по `col` или null, если ход невозможен или шарикам не хватает места на ленте. */
     fun tap(b: Board, s: PState, col: Int): PState? {
         val heads = s.heads.clone()
         val batch = batchOf(b, s, col, heads) ?: return null
         val main = s.copy()
         System.arraycopy(heads, 0, main.heads, 0, heads.size)
-        val cnt = IntArray(COLOR_COUNT)
-        for (t in batch) { cnt[t.c] += t.n; main.belt[t.c] += t.n; main.total += t.n }
-        main.waiting = 0
-        settle(b, main, b.elevator >= 0 && !s.open)
-        var entering = false
-        for (c in 0 until COLOR_COUNT) if (cnt[c] > main.belt[c]) { entering = true; break }
-        if (main.total + main.waiting + (if (entering) 1 else 0) > b.cap) return null
+        // шарики приходят по одному, в порядке лотков; подходящая коробка забирает их сразу
+        for (t in batch) repeat(t.n) {
+            if (main.total >= b.cap) { settle(b, main); if (main.total >= b.cap) return null }
+            main.belt[t.c]++; main.total++
+            settle(b, main)
+        }
         return main
     }
 

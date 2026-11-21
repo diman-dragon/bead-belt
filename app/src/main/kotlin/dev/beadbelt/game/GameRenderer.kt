@@ -180,17 +180,20 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
     // ---------- коробки ----------
 
     private fun boxes(cv: Canvas, game: Game) {
+        for (pi in 0 until game.popping.size) {          // собранные коробки доигрывают на месте
+            val b = game.popping[pi]
+            val x = game.boxX[b.slot]
+            if (b.pop >= 0f) {
+                val f = b.pop / Game.POP_T
+                drawBox(cv, x, BOX_Y - 12f * f, 1f + 0.25f * sin(f * PI.toFloat()), b, (255 * (1f - f * f)).toInt())
+            } else drawBox(cv, x, BOX_Y, 1f, b, 255)
+        }
         for (i in 0 until SLOTS) {
             val x = game.boxX[i]
             val q = game.queues[i]
             for (k in minOf(q.size, 1) downTo 1) g.crate(cv, a.boxDim[q[k - 1].c], x, BOX_Y + 13f * k, BOX_W, BOX_H, 1f - 0.07f * k, 255)
             val b = game.boxes[i] ?: continue
-            if (b.pop >= 0f) {
-                val f = b.pop / Game.POP_T
-                drawBox(cv, x, BOX_Y - 12f * f, 1f + 0.25f * sin(f * PI.toFloat()), b, (255 * (1f - f * f)).toInt())
-            } else {
-                drawBox(cv, x, BOX_Y + b.enter * 14f, 0.94f + 0.06f * (1f - b.enter), b, 255)
-            }
+            drawBox(cv, x, BOX_Y + b.enter * 14f, 0.94f + 0.06f * (1f - b.enter), b, 255)
         }
     }
 

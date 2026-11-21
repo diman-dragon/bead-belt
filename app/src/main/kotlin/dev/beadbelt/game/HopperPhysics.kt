@@ -4,8 +4,6 @@ import kotlin.math.sqrt
 
 class Body(val c: Int, var x: Float, var y: Float) {
     var vx = 0f; var vy = 0f
-    /** Коробка, за которой закреплён шарик (см. Game.assign). */
-    var claim: Box? = null
     /** Сглаженная позиция для рисования: гасит микро-дрожь шариков в куче. */
     var rx = x; var ry = y
 }

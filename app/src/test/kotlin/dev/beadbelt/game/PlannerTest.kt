@@ -4,77 +4,51 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Модель (Planner), подсказки и настоящая игра обязаны вести себя одинаково — на этом держатся все 200 уровней. */
+/**
+ * Исход хода в игре непредсказуем: шарики перемешиваются в воронке и падают в коробки по мере проезда над ними.
+ * Поэтому здесь проверяется не точное совпадение с моделью, а то, что игрок, который после каждого хода
+ * слушается подсказки, выигрывает почти всегда.
+ */
 class PlannerTest {
     private val dt = 1f / 60f
 
-    /** Проигрывает готовый план в настоящей игре; ждёт, пока всё уляжется между тапами. */
-    private fun replay(level: Level, path: List<Int>, seed: Long): Game {
+    /** Игрок с подсказкой. Если подсказка говорит «тупик» — всё равно ходит, как делал бы человек. */
+    private fun playWithHints(level: Level, seed: Long): State {
         val g = Game(level, seed) { _, _ -> }
-        var t = 0f; var i = 0; var idle = 0f
+        var t = 0f; var idle = 0f
         while (g.state == State.PLAY && t < 900f) {
             idle += dt
-            if (idle > 0.4f && i < path.size && Hints.calm(g)) { g.tapColumn(path[i]); i++; idle = 0f }
+            if (idle > 0.4f && Hints.calm(g)) {
+                var col = Hints.advise(g).col
+                if (col < 0) col = g.cols.indices.firstOrNull { g.cols[it].isNotEmpty() } ?: -1
+                if (col >= 0) { g.tapColumn(col); idle = 0f }
+            }
             g.update(dt); t += dt
         }
-        return g
+        return g.state
     }
 
+    /** На каждом уровне игрок с подсказкой выигрывает не реже 4 раз из 5 (раскладка физики каждый раз другая). */
     @Test
-    fun planOfTheModelWinsInTheRealGame() {
+    fun followingHintsWinsAlmostAlways() {
         for (id in 1..LEVEL_COUNT) {
-            val l = Levels.make(id)
-            val b = Planner.board(l, l.belt)
-            val out = Planner.solve(b, Planner.initial(b))
-            assertTrue("уровень $id: модель не нашла решения", out.win)
-            for (seed in 1L..2L) assertEquals("уровень $id, seed $seed", State.WON, replay(l, out.path, seed).state)
+            val wins = (1L..5L).count { playWithHints(Levels.make(id), it) == State.WON }
+            assertTrue("уровень $id: подсказке удалось выиграть лишь $wins из 5", wins >= 4)
         }
     }
 
-    /** Игрок, который после каждого хода слушается подсказки, проходит каждый уровень. */
+    /** Разный seed физики воронки даёт разную партию: непредсказуемость сохранена. */
     @Test
-    fun followingHintsWinsEveryLevel() {
-        for (id in 1..LEVEL_COUNT) {
-            val g = Game(Levels.make(id)) { _, _ -> }
-            var t = 0f; var idle = 0f
-            while (g.state == State.PLAY && t < 900f) {
-                idle += dt
-                if (idle > 0.4f && Hints.calm(g)) {
-                    val a = Hints.advise(g)
-                    if (a.col >= 0) { g.tapColumn(a.col); idle = 0f } else break
-                }
-                g.update(dt); t += dt
-            }
-            assertEquals("уровень $id", State.WON, g.state)
+    fun outcomesDifferBetweenSeeds() {
+        val sigs = HashSet<String>()
+        for (seed in 1L..8L) {
+            val g = Game(Levels.make(40), seed) { _, _ -> }
+            repeat(30) { g.update(dt) }
+            g.tapColumn(0)
+            repeat(180) { g.update(dt) }
+            sigs.add(g.slots.joinToString(""))
         }
-    }
-
-    /** После каждого хода состояние настоящей игры совпадает с тем, что предсказала модель. */
-    @Test
-    fun modelPredictsTheGameAfterEveryTap() {
-        for (id in intArrayOf(18, 21, 69, 124, 149, 180, 198)) {
-            val g = Game(Levels.make(id)) { _, _ -> }
-            var t = 0f; var idle = 0f; var predicted: PState? = null
-            while (g.state == State.PLAY && t < 900f) {
-                idle += dt
-                if (idle > 0.4f && Hints.calm(g)) {
-                    val (b, s) = Hints.snapshot(g)
-                    predicted?.let { p ->
-                        assertEquals("уровень $id: лента", p.belt.toList(), s.belt.toList())
-                        assertEquals("уровень $id: коробки", p.actN.toList(), s.actN.toList())
-                    }
-                    val a = Hints.advise(g)
-                    if (a.col < 0) break
-                    predicted = Planner.tap(b, s, a.col)?.let { n ->
-                        // после тапа «следующая коробка» сдвигается: сравниваем по числу шариков и прогрессу
-                        PState(IntArray(n.heads.size), IntArray(SLOTS), n.actN.clone(), n.belt.clone(), n.open, n.total, n.done)
-                    }
-                    g.tapColumn(a.col); idle = 0f
-                }
-                g.update(dt); t += dt
-            }
-            assertEquals("уровень $id", State.WON, g.state)
-        }
+        assertTrue("порядок шариков на ленте должен зависеть от физики", sigs.size > 1)
     }
 
     @Test
@@ -95,11 +69,26 @@ class PlannerTest {
         assertEquals(Advice.WAIT, Hints.advise(g).kind)
     }
 
-    /** «Ещё шанс»: после проигрыша шарики возвращаются в лотки, и игру можно выиграть. */
+    /** Собранная коробка сразу уступает место: в слоте уже стоит следующая (или пусто), а старая только дозавершается. */
     @Test
-    fun reviveBringsMarblesBackAndTheGameCanBeWon() {
+    fun nextBoxAppearsTheMomentOneIsFull() {
+        val g = Game(Levels.make(1)) { _, _ -> }
+        var t = 0f; var checked = false
+        while (g.state == State.PLAY && t < 180f && !checked) {
+            if (Hints.calm(g)) { val a = Hints.advise(g); if (a.col >= 0) g.tapColumn(a.col) }
+            g.update(dt); t += dt
+            for (b in g.popping) {
+                assertTrue("в слоте ${b.slot} всё ещё стоит собранная коробка", g.boxes[b.slot] !== b)
+                checked = true
+            }
+        }
+        assertTrue("за 3 минуты ни одна коробка не собралась", checked)
+    }
+
+    /** «Ещё шанс»: после проигрыша шарики возвращаются в лотки, и игру можно продолжить. */
+    @Test
+    fun reviveBringsMarblesBackAndTheGameContinues() {
         val g = Game(Levels.make(30)) { _, _ -> }
-        // забиваем ленту подряд идущими тапами без оглядки
         var t = 0f; var i = 0
         while (g.state == State.PLAY && t < 600f) {
             if (t > i * 0.3f && g.cols.any { it.isNotEmpty() }) { g.tapColumn(i % g.cols.size); i++ }
@@ -108,7 +97,7 @@ class PlannerTest {
         if (g.state == State.LOST) {
             assertTrue(g.revive())
             assertEquals(State.PLAY, g.state)
-            assertTrue("ничьих шариков на ленте не осталось", (0 until g.n).none { g.slots[it] >= 0 && g.claimOf[it] == null })
+            assertTrue("шариков на ленте не осталось", g.slots.all { it < 0 })
             repeat(60) { g.update(dt) }
             assertEquals("игра идёт дальше, а не проигрывает мгновенно", State.PLAY, g.state)
         }
