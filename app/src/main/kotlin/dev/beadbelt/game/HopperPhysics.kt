@@ -4,6 +4,8 @@ import kotlin.math.sqrt
 
 class Body(val c: Int, var x: Float, var y: Float) {
     var vx = 0f; var vy = 0f
+    /** Коробка, за которой закреплён шарик (см. Game.assign). */
+    var claim: Box? = null
     /** Сглаженная позиция для рисования: гасит микро-дрожь шариков в куче. */
     var rx = x; var ry = y
 }
@@ -112,14 +114,14 @@ class HopperPhysics(private val bodies: ArrayList<Body>) {
         }
     }
 
-    /** Шарик, лежащий на воротах воронки, выпускается на свободную ячейку конвейера. Возвращает цвет или -1. */
-    fun takeGate(): Int {
+    /** Шарик, лежащий на воротах воронки, выпускается на свободную ячейку конвейера. Возвращает шарик или null. */
+    fun takeGate(): Body? {
         var best = -1
         var by = 0f
         for (i in 0 until bodies.size) {
             val b = bodies[i]
             if (kotlin.math.abs(b.x - 180f) < 24f && b.y > 308f && b.y > by) { best = i; by = b.y }
         }
-        return if (best < 0) -1 else bodies.removeAt(best).c
+        return if (best < 0) null else bodies.removeAt(best)
     }
 }

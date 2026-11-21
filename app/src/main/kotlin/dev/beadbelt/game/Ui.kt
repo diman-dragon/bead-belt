@@ -12,10 +12,10 @@ const val BTN_RETURN = 7
 const val BTN_NEXT = 8
 const val BTN_MENU = 9
 const val BTN_RESUME = 10
-const val BTN_UNDO = 11
-const val BTN_HINT = 12
-const val BTN_SKIP = 14
-const val BTN_PAUSE = 15
+const val BTN_HINT = 11
+const val BTN_REVIVE = 12
+const val BTN_GIFT = 13
+const val BTN_HELP = 14
 const val BTN_LEVEL = 1000      // BTN_LEVEL + номер уровня
 
 /** Раскладка экранов в логических координатах 360x640 — общая для рисования и для нажатий. */
@@ -25,6 +25,9 @@ object Layout {
     val MENU_LEVELS = floatArrayOf(50f, 424f, 310f, 476f)
     const val MENU_SOUND_X = 180f
     const val MENU_SOUND_Y = 530f
+    const val MENU_GIFT_X = 108f
+    const val MENU_HELP_X = 252f
+    const val MENU_ROUND_R = 25f
 
     // кнопки HUD
     const val HUD_L_X = 38f
@@ -32,6 +35,9 @@ object Layout {
     const val HUD_Y = 40f
     const val HUD_R = 22f
     const val BOOST_R = 26f
+    // нижний ряд: ракета, подсказка, монеты, возврат
+    const val HINT_BX = 112f
+    const val COIN_BX = 204f
 
     // список уровней: сетка 5 в ряд с прокруткой
     const val LV_COLS = 5
@@ -45,19 +51,14 @@ object Layout {
     val LV_ROWS = (LEVEL_COUNT + LV_COLS - 1) / LV_COLS
     val LV_CONTENT = LV_ROWS * LV_PITCH
 
-    // итоговая карточка победы
-    val END_CARD_WIN  = floatArrayOf(36f, 150f, 324f, 490f)
+    // итоговая карточка
+    val END_CARD = floatArrayOf(36f, 150f, 324f, 490f)
     val END_NEXT = floatArrayOf(60f, 374f, 300f, 428f)
     val END_MENU = floatArrayOf(60f, 440f, 300f, 478f)
-    // итоговая карточка проигрыша (чуть выше — вмещает две кнопки)
-    val END_CARD_LOSE = floatArrayOf(36f, 120f, 324f, 500f)
-    val END_RETRY = floatArrayOf(60f, 364f, 300f, 414f)
-    val END_SKIP  = floatArrayOf(60f, 426f, 300f, 476f)
+    val END_REVIVE = floatArrayOf(60f, 316f, 300f, 364f)
 
     // пауза
-    val PAUSE_RESUME = floatArrayOf(60f, 260f, 300f, 316f)
-    val PAUSE_SKIP = floatArrayOf(60f, 332f, 300f, 388f)
-    val PAUSE_MENU = floatArrayOf(60f, 404f, 300f, 460f)
+    val PAUSE_BTN = floatArrayOf(60f, 300f, 300f, 356f)
 
     fun inRect(r: FloatArray, x: Float, y: Float) = x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]
     fun inCircle(x: Float, y: Float, cx: Float, cy: Float, r: Float): Boolean { val dx = x - cx; val dy = y - cy; return dx * dx + dy * dy <= r * r }
@@ -74,5 +75,11 @@ class Ui {
     var clock = 0f
     var scroll = 0f
     var endT = 0f
+    /** Колонка, на которую указывает подсказка (-1 — нет), и сколько секунд ещё показывать. */
+    var hintCol = -1
+    var hintT = 0f
+    /** Сообщение в меню (подарок и т. п.) и время его появления. */
+    var menuMsg = ""
+    var menuMsgAt = -100f
     fun pr(id: Int) = if (pressId == id) press else 0f
 }

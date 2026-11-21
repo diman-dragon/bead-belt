@@ -97,19 +97,4 @@ class GameplayTest {
         val a = phaseAfter(60); val b = phaseAfter(120)
         assertEquals(a.toDouble(), b.toDouble(), 3.0)
     }
-
-    @Test
-    fun undoHintAndShuffleWorkCorrectly() {
-        val game = Game(LevelCache.get(18)) { _, _ -> }
-        val colsBefore = game.cols.sumOf { it.size }
-        game.tapColumn(0)
-        assertTrue(game.undoStack.isNotEmpty())
-        assertTrue(game.undo())
-
-        val hintCol = game.getHint()
-        assertTrue(hintCol == null || hintCol in game.cols.indices)
-
-        assertTrue(game.shuffleTrays())
-        assertEquals(colsBefore, game.cols.sumOf { it.size })
-    }
 }

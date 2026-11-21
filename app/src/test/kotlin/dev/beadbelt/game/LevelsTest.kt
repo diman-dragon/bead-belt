@@ -8,15 +8,37 @@ class LevelsTest {
     private val all by lazy { (1..LEVEL_COUNT).map { Levels.make(it) } }
 
     @Test
-    fun allLevelsAreConsistentAndSolvable() {
+    fun allLevelsAreConsistent() {
         for (l in all) {
             val trayCount = IntArray(COLOR_COUNT)
             l.columns.flatten().forEach { trayCount[it.c] += it.n }
             val boxCount = IntArray(COLOR_COUNT)
             l.boxes.forEach { boxCount[it]++ }
             for (c in 0 until COLOR_COUNT) assertEquals("уровень ${l.id} цвет $c", boxCount[c] * BOX, trayCount[c])
-            assertTrue("уровень ${l.id} не проходится", Levels.solvable(l, l.belt))
         }
+    }
+
+    /**
+     * Лента каждого уровня не меньше точного минимума плюс запас (или упирается в 30). Минимум считает Planner,
+     * а что он совпадает с настоящей игрой, доказывает PlannerTest. Если тест упал после правки генератора —
+     * пересчитай таблицу (tools/README.md).
+     */
+    @Test
+    fun beltTableMatchesThePlanner() {
+        for (l in all) {
+            val min = Planner.minCap(Levels.layout(l.id, Levels.attemptOf(l.id)))
+            assertTrue("уровень ${l.id} не проходится ни при какой ленте", min != null)
+            assertTrue("уровень ${l.id}: лента ${l.belt}, а нужно минимум $min + запас", l.belt >= min!! + Levels.BELT_SLACK || l.belt == 30 && l.belt >= min)
+        }
+    }
+
+    /** Уровень 18 когда-то был непроходим: решатель считал, что хватит ленты 18, а настоящей игре нужно 21+. */
+    @Test
+    fun levelEighteenIsPlayable() {
+        val l = Levels.make(18)
+        assertTrue("лента уровня 18 слишком мала: ${l.belt}", l.belt >= 23)
+        val b = Planner.board(l, l.belt)
+        assertTrue(Planner.solve(b, Planner.initial(b)).win)
     }
 
     @Test
@@ -27,15 +49,15 @@ class LevelsTest {
         assertTrue("лифт есть", all.any { it.elevator >= 0 })
     }
 
+    /** Раскладки (лотки, коробки, лифт) уровней 1–100 не меняются: меняется только вместимость ленты. */
     @Test
-    fun firstHundredLevelsStayExactlyTheSame() {
+    fun firstHundredLayoutsStayExactlyTheSame() {
         val sb = StringBuilder()
         for (l in all.filter { it.id <= 100 }) {
-            if (l.id == 18) continue
             sb.append(l.id).append(':').append(l.columns.joinToString("|") { c -> c.joinToString(",") { "${it.c}.${it.n}.${it.arrow}" } })
-                .append(';').append(l.boxes.joinToString(",")).append(';').append(l.belt).append(';').append(l.elevator).append('\n')
+                .append(';').append(l.boxes.joinToString(",")).append(';').append(l.elevator).append('\n')
         }
-        assertEquals("уровни 1–100 изменились — у игроков сломается прогресс", 1518606562, sb.toString().hashCode())
+        assertEquals("раскладки уровней 1–100 изменились", 1737299373, sb.toString().hashCode())
     }
 
     @Test

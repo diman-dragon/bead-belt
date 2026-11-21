@@ -229,21 +229,29 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         p.strokeCap = Paint.Cap.BUTT
     }
 
-    private fun vecUndoIcon(cv: Canvas) {
-        p.style = Paint.Style.STROKE; p.strokeWidth = 3.4f; p.strokeCap = Paint.Cap.ROUND; p.color = Theme.WHITE; p.shader = null
-        rect.set(-9f, -6f, 9f, 12f); cv.drawArc(rect, 140f, 260f, false, p)
-        p.style = Paint.Style.FILL
-        path.reset(); path.moveTo(14f, -4f); path.lineTo(4f, -5f); path.lineTo(9f, -13f); path.close(); cv.drawPath(path, p)
+    /** Лампочка (подсказка), центр в (0,0). */
+    private fun vecBulb(cv: Canvas) {
+        p.style = Paint.Style.FILL; p.shader = null
+        p.color = 0xFFFFD84A.toInt(); cv.drawCircle(0f, -4f, 9f, p)
+        path.reset(); path.moveTo(-5.5f, 3f); path.lineTo(5.5f, 3f); path.lineTo(4f, 9f); path.lineTo(-4f, 9f); path.close(); cv.drawPath(path, p)
+        p.color = 0xFFB8BFD6.toInt(); rect.set(-4.5f, 9f, 4.5f, 11.8f); cv.drawRoundRect(rect, 1.2f, 1.2f, p)
+        rect.set(-3f, 11.8f, 3f, 14.5f); cv.drawRoundRect(rect, 1.2f, 1.2f, p)
+        p.color = Theme.alpha(Theme.WHITE, 170); cv.drawCircle(-3.4f, -7.2f, 2.6f, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = 1.6f; p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND; p.color = 0xFFC48A00.toInt()
+        path.reset(); path.moveTo(-3f, 3f); path.lineTo(-1.5f, -2.5f); path.lineTo(0f, 0.5f); path.lineTo(1.5f, -2.5f); path.lineTo(3f, 3f); cv.drawPath(path, p)
         p.strokeCap = Paint.Cap.BUTT
     }
 
-    private fun vecHintIcon(cv: Canvas) {
+    /** Подарочная коробка, центр в (0,0). */
+    private fun vecGift(cv: Canvas) {
         p.style = Paint.Style.FILL; p.shader = null
-        p.color = 0xFFFFC21F.toInt(); cv.drawCircle(0f, -3f, 9f, p)
-        p.style = Paint.Style.STROKE; p.strokeWidth = 3f; p.color = 0xFF7A4F00.toInt()
-        cv.drawCircle(0f, -3f, 9f, p)
-        p.style = Paint.Style.FILL; p.color = 0xFF8892B0.toInt()
-        rect.set(-3.5f, 5f, 3.5f, 11f); cv.drawRect(rect, p)
+        p.color = 0xFFFF4D6D.toInt(); rect.set(-11f, -1f, 11f, 13f); cv.drawRoundRect(rect, 2.5f, 2.5f, p)
+        p.color = 0xFFFF7A90.toInt(); rect.set(-13f, -7f, 13f, 0f); cv.drawRoundRect(rect, 2.5f, 2.5f, p)
+        p.color = 0xFFFFD84A.toInt(); rect.set(-2.6f, -7f, 2.6f, 13f); cv.drawRect(rect, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = 2.6f; p.strokeCap = Paint.Cap.ROUND
+        rect.set(-9f, -14f, -1f, -6f); cv.drawOval(rect, p)
+        rect.set(1f, -14f, 9f, -6f); cv.drawOval(rect, p)
+        p.strokeCap = Paint.Cap.BUTT
     }
 
     private fun vecBack(cv: Canvas, x: Float, y: Float) {
@@ -312,8 +320,8 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
     private val icRestart = bake(17f, 17f) { vecRestart(it, 0f, 0f) }
     private val icBack = bake(10f, 12f) { vecBack(it, 0f, 0f) }
     private val icReturn = bake(17f, 17f) { vecReturnIcon(it) }
-    private val icUndo = bake(17f, 17f) { vecUndoIcon(it) }
-    private val icHint = bake(14f, 14f) { vecHintIcon(it) }
+    private val icBulb = bake(14f, 18f) { vecBulb(it) }
+    private val icGift = bake(16f, 17f) { vecGift(it) }
     private val icLock = bake(16f, 24f) { vecLock(it, 0f, 0f, 1f) }
     private val icCheck = bake(12f, 10f) { vecCheck(it, 0f, 0f, 1f, Theme.WHITE) }
     private val icCoin = bake(18f, 18f) { vecCoin(it, 0f, 0f, 16f) }
@@ -351,8 +359,8 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
     fun restart(cv: Canvas, x: Float, y: Float) = put(cv, icRestart, x, y)
     fun back(cv: Canvas, x: Float, y: Float) = put(cv, icBack, x, y)
     fun returnIcon(cv: Canvas) = put(cv, icReturn, 0f, 0f)
-    fun undoIcon(cv: Canvas) = put(cv, icUndo, 0f, 0f)
-    fun hintIcon(cv: Canvas) = put(cv, icHint, 0f, 0f)
+    fun bulb(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icBulb, x, y, sc)
+    fun gift(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icGift, x, y, sc)
     fun lock(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icLock, x, y, sc)
     fun check(cv: Canvas, x: Float, y: Float, sc: Float, color: Int) = put(cv, icCheck, x, y, sc, color ushr 24)
     fun coin(cv: Canvas, x: Float, y: Float, r: Float) = put(cv, icCoin, x, y, r / 16f)

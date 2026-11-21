@@ -19,7 +19,7 @@ private const val BTN_BLOCK = -1     // нажатие поглощено (ди�
  * Рисование вынесено в [GameRenderer] и [Screens], тяжёлая графика запекается в [Assets].
  */
 class GameView(context: Context) : View(context) {
-    private enum class Screen { MENU, LEVELS, PLAY }
+    private enum class Screen { MENU, LEVELS, PLAY, HELP }
 
     private val progress = Progress(context)
     private val sound = Sound(context).also { it.enabled = progress.sound }
@@ -36,6 +36,11 @@ class GameView(context: Context) : View(context) {
     private var fade = 0f
     private var hint = ""
     private var hintAt = 0f
+    private var stars = 0
+    private var hintsUsed = 0          // подсказки, взятые на этом уровне (влияют на звёзды)
+    private var idle = 0f              // сколько секунд игрок ничего не нажимал
+    private var idleTipShown = false
+    private var fullTipShown = false
 
     private var running = false
     private var lastNs = 0L
@@ -101,9 +106,30 @@ class GameView(context: Context) : View(context) {
         val g = game
         if (screen == Screen.PLAY && g != null && !paused) {
             g.update(dt)
-            if (g.state != State.PLAY) ui.endT += dt
+            if (g.state != State.PLAY) ui.endT += dt else tutorialTick(g, dt)
         }
     }
+
+    /** Подсказки по ходу игры: указатель гаснет сам; если игрок завис или лента почти полна — мягкий совет. */
+    private fun tutorialTick(g: Game, dt: Float) {
+        if (ui.hintT > 0f) { ui.hintT -= dt; if (ui.hintT <= 0f) ui.hintCol = -1 }
+        idle += dt
+        val quiet = hint.isEmpty() || ui.clock - hintAt > 6f
+        if (current <= 2 && idle > 3.5f && ui.hintCol < 0 && Hints.calm(g)) {   // самые первые уровни: сразу показываем пальцем
+            val a = Hints.advise(g, 5_000)
+            if (a.kind == Advice.TAP) point(a.col)
+            idle = 0f
+        } else if (!idleTipShown && idle > 14f && quiet && current > 2) {
+            idleTipShown = true; say("Не знаешь, что нажать? Лампочка покажет ход")
+        }
+        if (!fullTipShown && quiet && g.n - g.occupied <= 1) {
+            fullTipShown = true; say("Лента почти полна! Поможет лампочка или «Вернуть»")
+        }
+    }
+
+    private fun say(msg: String) { hint = msg; hintAt = ui.clock }
+
+    private fun point(col: Int) { ui.hintCol = col; ui.hintT = 4.5f }
 
     private fun startLoop() {
         if (running || !isAttachedToWindow) return
@@ -141,7 +167,7 @@ class GameView(context: Context) : View(context) {
     // ---------- переходы ----------
 
     private fun go(next: Screen) {
-        screen = next; fade = 1f; ui.pressId = BTN_NONE; flingV = 0f
+        screen = next; fade = 1f; ui.pressId = BTN_NONE; flingV = 0f; ui.hintCol = -1
         if (next == Screen.LEVELS) {
             val row = (progress.unlocked - 1) / Layout.LV_COLS
             ui.scroll = (row * Layout.LV_PITCH - 180f).coerceIn(0f, Layout.maxScroll())
@@ -160,18 +186,27 @@ class GameView(context: Context) : View(context) {
         }
         current = target
         ui.endT = 0f; reward = 0; paused = false
-        hint = when (current) {
-            1 -> "Нажми на лоток: шарики поедут по конвейеру"
-            3 -> "Ракета внизу мгновенно закрывает коробку"
-            8 -> "Золотая скоба: тап запустит оба лотка сразу"
-            15 -> "Замок: коробка откроется после первой собранной"
-            else -> ""
+        val lv = LevelCache.get(current)
+        hint = ""; hintAt = ui.clock; hintsUsed = 0; idle = 0f; idleTipShown = false; fullTipShown = false
+        stars = 0; ui.hintCol = -1; ui.hintT = 0f
+        // разовый совет: показываем первый подходящий, который ещё не видели
+        val tip = when {
+            !progress.tipSeen(TIP_TAP) -> TIP_TAP to "Нажми на лоток: шарики поедут по конвейеру"
+            lv.columns.any { c -> c.any { it.arrow != 0 } } && !progress.tipSeen(TIP_ARROWS) -> TIP_ARROWS to "Золотая скоба: тап запустит оба лотка сразу"
+            lv.elevator >= 0 && !progress.tipSeen(TIP_LIFT) -> TIP_LIFT to "Замок: коробка откроется после первой собранной"
+            current >= 3 && !progress.tipSeen(TIP_ROCKET) -> TIP_ROCKET to "Ракета внизу мгновенно закрывает коробку"
+            current >= 4 && !progress.tipSeen(TIP_HINT) -> TIP_HINT to "Застрял? Нажми лампочку, и она покажет лучший ход"
+            else -> null
         }
-        hintAt = ui.clock
-        game = Game(LevelCache.get(current)) { ev, arg ->
+        if (tip != null) { progress.markTip(tip.first); hint = tip.second }
+        game = Game(lv) { ev, arg ->
             sound.event(ev, arg)
             if (ev == EV_WIN || ev == EV_LOSE) performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-            if (ev == EV_WIN) reward = progress.win(current)
+            if (ev == EV_WIN) {
+                val usage = (game?.assists ?: 0) + hintsUsed
+                stars = Progress.starsFor(usage)
+                reward = progress.win(current, usage)
+            }
         }
         LevelCache.prefetch(current + 1)
         go(Screen.PLAY)
@@ -185,8 +220,11 @@ class GameView(context: Context) : View(context) {
                 Layout.inRect(Layout.MENU_PLAY, x, y) -> BTN_PLAY
                 Layout.inRect(Layout.MENU_LEVELS, x, y) -> BTN_LEVELS
                 Layout.inCircle(x, y, Layout.MENU_SOUND_X, Layout.MENU_SOUND_Y, 30f) -> BTN_SOUND
+                Layout.inCircle(x, y, Layout.MENU_GIFT_X, Layout.MENU_SOUND_Y, 30f) -> BTN_GIFT
+                Layout.inCircle(x, y, Layout.MENU_HELP_X, Layout.MENU_SOUND_Y, 30f) -> BTN_HELP
                 else -> BTN_NONE
             }
+            Screen.HELP -> return if (Layout.inCircle(x, y, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R + 6f)) BTN_BACK else BTN_NONE
             Screen.LEVELS -> {
                 if (Layout.inCircle(x, y, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R + 6f)) return BTN_BACK
                 if (y < Layout.LV_TOP || y > Layout.LV_BOTTOM) return BTN_NONE
@@ -202,21 +240,13 @@ class GameView(context: Context) : View(context) {
             }
             Screen.PLAY -> {
                 val g = game ?: return BTN_NONE
-                if (paused) {
-                    return when {
-                        Layout.inRect(Layout.PAUSE_RESUME, x, y) -> BTN_RESUME
-                        Layout.inRect(Layout.PAUSE_SKIP, x, y) -> BTN_SKIP
-                        Layout.inRect(Layout.PAUSE_MENU, x, y) -> BTN_MENU
-                        else -> BTN_BLOCK
-                    }
-                }
+                if (paused) return if (Layout.inRect(Layout.PAUSE_BTN, x, y)) BTN_RESUME else BTN_BLOCK
                 if (g.state != State.PLAY && ui.endT > 0.4f) {
                     if (ui.endT < 0.9f) return BTN_BLOCK
                     return when {
-                        g.state == State.LOST && Layout.inRect(Layout.END_RETRY, x, y) -> BTN_NEXT
-                        g.state == State.LOST && Layout.inRect(Layout.END_SKIP, x, y) -> BTN_SKIP
-                        g.state == State.WON && Layout.inRect(Layout.END_NEXT, x, y) -> BTN_NEXT
-                        g.state == State.WON && Layout.inRect(Layout.END_MENU, x, y) -> BTN_MENU
+                        g.state == State.LOST && progress.canRevive() && Layout.inRect(Layout.END_REVIVE, x, y) -> BTN_REVIVE
+                        Layout.inRect(Layout.END_NEXT, x, y) -> BTN_NEXT
+                        Layout.inRect(Layout.END_MENU, x, y) -> BTN_MENU
                         else -> BTN_BLOCK
                     }
                 }
@@ -224,10 +254,8 @@ class GameView(context: Context) : View(context) {
                     Layout.inCircle(x, y, Layout.HUD_R_X, Layout.HUD_Y, Layout.HUD_R + 6f) -> BTN_RESTART
                     Layout.inCircle(x, y, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R + 6f) -> BTN_SOUND
                     Layout.inCircle(x, y, ROCKET_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_ROCKET
-                    Layout.inCircle(x, y, UNDO_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_UNDO
-                    Layout.inCircle(x, y, HINT_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_HINT
+                    Layout.inCircle(x, y, Layout.HINT_BX, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_HINT
                     Layout.inCircle(x, y, RETURN_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_RETURN
-                    y < 70f -> BTN_PAUSE
                     else -> BTN_NONE
                 }
             }
@@ -244,7 +272,7 @@ class GameView(context: Context) : View(context) {
                 val id = hit(x, y)
                 ui.pressId = if (id > 0) id else BTN_NONE; ui.press = 0f
                 // лотки реагируют сразу на касание — так отзывчивее, чем на отпускание
-                if (id == BTN_NONE && screen == Screen.PLAY) game?.tap(x, y)
+                if (id == BTN_NONE && screen == Screen.PLAY && game?.tap(x, y) == true) { idle = 0f; ui.hintCol = -1 }
             }
             MotionEvent.ACTION_MOVE -> if (screen == Screen.LEVELS) {
                 val dy = e.y - downY
@@ -277,33 +305,45 @@ class GameView(context: Context) : View(context) {
             BTN_SOUND -> { progress.sound = !progress.sound; sound.enabled = progress.sound }
             BTN_BACK, BTN_MENU -> go(Screen.MENU)
             BTN_RESTART -> startLevel(current)
-            BTN_PAUSE -> { paused = true }
             BTN_RESUME -> { paused = false; lastNs = 0L; smoothDt = 0f }
-            BTN_SKIP -> {
-                paused = false
-                val tgt = g ?: return
-                if (tgt.state == State.PLAY || tgt.state == State.LOST) {
-                    tgt.state = State.WON
-                    tgt.done = tgt.total
-                    tgt.shake = 0f
-                    repeat(40) { tgt.fx.confetti(java.util.Random(it.toLong()), COLOR_COUNT) }
-                    reward = progress.win(current)
-                    ui.endT = 0f
-                    sound.event(EV_WIN, 0)
-                    performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                }
+            BTN_ROCKET -> if (g != null) useBooster(AID_ROCKET, g)
+            BTN_RETURN -> if (g != null) useBooster(AID_RETURN, g)
+            BTN_HINT -> if (g != null) useHint(g)
+            BTN_REVIVE -> if (g != null && g.state == State.LOST && progress.canRevive() && g.revive()) {
+                progress.spendRevive(); ui.endT = 0f; idle = 0f
             }
-            BTN_ROCKET -> if (g != null) useSpecialBooster("rocket", g) { g.useRocket() }
-            BTN_UNDO -> if (g != null) useSpecialBooster("undo", g) { g.undo() }
-            BTN_HINT -> if (g != null) useSpecialBooster("hint", g) { g.getHint() != null }
-            BTN_RETURN -> if (g != null) useSpecialBooster("return", g) { g.returnMarbles() }
+            BTN_HELP -> go(Screen.HELP)
+            BTN_GIFT -> {
+                val c = progress.claimGift()
+                ui.menuMsg = if (c > 0) "Подарок: +$c монет · день ${progress.giftStreak} подряд" else "Следующий подарок будет завтра"
+                ui.menuMsgAt = ui.clock
+            }
             BTN_NEXT -> if (g != null) startLevel(if (g.state == State.WON && current < LEVEL_COUNT) current + 1 else current)
         }
     }
 
-    private fun useSpecialBooster(type: String, g: Game, action: () -> Boolean) {
-        if (g.state != State.PLAY || !progress.canAfford(type)) return
-        if (action()) progress.spend(type)
+    private fun useBooster(aid: Int, g: Game) {
+        if (g.state != State.PLAY || !progress.canAfford(aid)) return
+        if (if (aid == AID_ROCKET) g.useRocket() else g.returnMarbles()) { progress.spend(aid); idle = 0f }
+    }
+
+    /**
+     * Умная подсказка: игра переводится в модель и ищется выигрышная последовательность от *текущего* положения.
+     * Платим только за ход, который реально показали; «подожди» и «тупик» бесплатны.
+     */
+    private fun useHint(g: Game) {
+        if (g.state != State.PLAY) return
+        if (!progress.canAfford(AID_HINT)) { say("Не хватает монет на подсказку (${Progress.HINT_PRICE})"); return }
+        val a = Hints.advise(g, 30_000)
+        when (a.kind) {
+            Advice.TAP, Advice.UNSURE -> {
+                progress.spend(AID_HINT); hintsUsed++; idle = 0f
+                point(a.col)
+                say(if (a.kind == Advice.TAP) "Нажми сюда: это ведёт к победе" else "Точно просчитать не вышло, но ход разумный")
+            }
+            Advice.WAIT -> say("Подожди: шарики ещё едут")
+            Advice.STUCK -> say("Похоже, тупик. Поможет «Вернуть» или заново")
+        }
     }
 
     // ---------- рисование ----------
@@ -315,10 +355,11 @@ class GameView(context: Context) : View(context) {
         when (screen) {
             Screen.MENU -> screens?.menu(cv, ui)
             Screen.LEVELS -> screens?.levels(cv, ui)
+            Screen.HELP -> screens?.help(cv, ui)
             Screen.PLAY -> game?.let { g ->
                 val hintAlpha = if (hint.isEmpty()) 0f else (6f - (ui.clock - hintAt)).coerceIn(0f, 1f)
                 renderer?.draw(cv, g, ui, hint, hintAlpha)
-                if (g.state != State.PLAY) { screens?.end(cv, g, ui, reward, current == LEVEL_COUNT); renderer?.confetti(cv, g) }
+                if (g.state != State.PLAY) { screens?.end(cv, g, ui, reward, current == LEVEL_COUNT, stars); renderer?.confetti(cv, g) }
                 if (paused) screens?.pause(cv, ui)
             }
         }
