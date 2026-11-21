@@ -4,9 +4,11 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /** Рисует игровое поле: HUD, лотки, воронку, ленту, коробки, эффекты и бустеры. */
 class GameRenderer(private val g: Painter, private val a: Assets, private val progress: Progress) {
@@ -180,12 +182,18 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
     // ---------- коробки ----------
 
     private fun boxes(cv: Canvas, game: Game) {
-        for (pi in 0 until game.popping.size) {          // собранные коробки доигрывают на месте
+        for (pi in 0 until game.popping.size) {          // собранные коробки уходят вверх дымком
             val b = game.popping[pi]
             val x = game.boxX[b.slot]
             if (b.pop >= 0f) {
                 val f = b.pop / Game.POP_T
-                drawBox(cv, x, BOX_Y - 12f * f, 1f + 0.25f * sin(f * PI.toFloat()), b, (255 * (1f - f * f)).toInt())
+                val fade = 1f - smooth01((f - 0.3f) / 0.7f)
+                val sway = sin(f * 7f + b.slot * 1.7f)
+                cv.save()
+                cv.translate(x + sway * 9f * f, BOX_Y - Game.rise(f))
+                cv.rotate(sway * 5f * f)
+                drawBox(cv, 0f, 0f, 1f + 0.3f * f, b, (255 * fade * fade).toInt())
+                cv.restore()
             } else drawBox(cv, x, BOX_Y, 1f, b, 255)
         }
         for (i in 0 until SLOTS) {
@@ -197,18 +205,42 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         }
     }
 
+    private fun smooth01(t: Float): Float { val u = t.coerceIn(0f, 1f); return u * u * (3f - 2f * u) }
+
     private fun drawBox(cv: Canvas, x: Float, y: Float, sc: Float, b: Box, alpha: Int) {
-        g.crate(cv, if (b.locked) a.boxDim[b.c] else a.box[b.c], x, y, BOX_W, BOX_H, sc, alpha)
-        for (k in 0 until b.n) g.marble(cv, x + (k - 1) * 22f * sc, y - 12f * sc, 9.5f * sc, b.c, alpha)
+        // коробка проседает и пружинит от упавшего шарика
+        val dip = sin(b.bump * PI.toFloat()) * 3.2f
+        val squash = 1f + 0.03f * sin(b.bump * PI.toFloat())
+        g.crate(cv, if (b.locked) a.boxDim[b.c] else a.box[b.c], x, y + dip, BOX_W, BOX_H, sc * squash, alpha)
+        for (k in 0 until b.n) {
+            val last = k == b.n - 1 && b.bump > 0f      // только что упавший шарик «плюхается» и оседает
+            g.marble(cv, x + (k - 1) * 22f * sc, y + dip - 12f * sc, 9.5f * sc * (if (last) 1f + 0.3f * b.bump else 1f), b.c, alpha)
+        }
         if (b.locked) g.lock(cv, x, y - 4f)
     }
 
+    /** Шарик вылетает из ячейки лёгкой дугой, падает с ускорением, вытягивается по скорости и оставляет след. */
     private fun flyers(cv: Canvas, game: Game) {
         for (fi in 0 until game.flyers.size) {
             val f = game.flyers[fi]
-            val e = f.t.coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
             val tx = game.boxX[f.boxIdx] + (f.hole - 1) * 22f; val ty = BOX_Y - 12f
-            g.marble(cv, f.x0 + (tx - f.x0) * e, f.y0 + (ty - f.y0) * e - sin(e * PI.toFloat()) * 10f, 11f - 1.5f * e, f.c)
+            fun px(t: Float): Float { val u = t.coerceIn(0f, 1f); return f.x0 + (tx - f.x0) * (1f - (1f - u) * (1f - u)) }
+            fun py(t: Float): Float { val u = t.coerceIn(0f, 1f); return f.y0 + (ty - f.y0) * u * u - 15f * sin(u * PI.toFloat()) * (1f - u) }
+            val t = f.t.coerceIn(0f, 1f)
+            val r = 11f - 1.5f * t
+            for (k in 2 downTo 1) {                              // след: два бледных «призрака» позади
+                val tt = t - k * 0.07f
+                if (tt > 0f) g.marble(cv, px(tt), py(tt), r * (1f - 0.12f * k), f.c, 110 / k)
+            }
+            val dx = px(t + 0.02f) - px(t - 0.02f); val dy = py(t + 0.02f) - py(t - 0.02f)
+            val speed = sqrt(dx * dx + dy * dy) / 0.04f / Game.FLY_T
+            val stretch = 1f + min(0.4f, speed / 1100f)
+            cv.save()
+            cv.translate(px(t), py(t))
+            cv.rotate(Math.toDegrees(atan2(dy, dx).toDouble()).toFloat())
+            cv.scale(stretch, 1f / sqrt(stretch))                // вытягивается вдоль полёта, площадь сохраняется
+            g.marble(cv, 0f, 0f, r, f.c)
+            cv.restore()
         }
     }
 
@@ -248,6 +280,14 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
                     val s = fx.size[i] * (0.35f + 0.65f * abs(cos(fx.rot[i] * 1.7f)))    // «переворачивается» в полёте
                     g.rect.set(-fx.size[i], -s * 0.5f, fx.size[i], s * 0.5f); cv.drawRect(g.rect, p)
                     cv.restore()
+                }
+                Particles.PUFF -> {
+                    val soft = min(1f, life * 2.2f)
+                    p.style = Paint.Style.FILL
+                    p.color = Theme.alpha(Theme.mix(col[1], Theme.WHITE, 0.55f), (soft * 84).toInt())
+                    cv.drawCircle(fx.x[i], fx.y[i], fx.size[i], p)
+                    p.color = Theme.alpha(Theme.WHITE, (soft * 38).toInt())
+                    cv.drawCircle(fx.x[i] - fx.size[i] * 0.25f, fx.y[i] - fx.size[i] * 0.25f, fx.size[i] * 0.55f, p)
                 }
                 Particles.RING -> {
                     p.style = Paint.Style.STROKE; p.strokeWidth = 1f + 4f * life; p.color = Theme.alpha(col[0], (life * 230).toInt())

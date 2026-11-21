@@ -12,6 +12,7 @@ class Particles(private val cap: Int = 200) {
         const val CONFETTI = 1
         const val RING = 2
         const val GLINT = 3
+        const val PUFF = 4
     }
 
     var n = 0; private set
@@ -35,6 +36,11 @@ class Particles(private val cap: Int = 200) {
             add(SPARK, color, px, py, kotlin.math.cos(a) * v, kotlin.math.sin(a) * v - 60f, 1.4f + rnd.nextFloat() * 0.6f, 2.4f + rnd.nextFloat() * 2.4f)
         }
     }
+
+    /** Клуб дыма: мягкий круг, который растёт, дрейфует вверх и тает. */
+    fun puff(px: Float, py: Float, color: Int, rnd: Random) =
+        add(PUFF, color, px + (rnd.nextFloat() - 0.5f) * 30f, py + (rnd.nextFloat() - 0.5f) * 24f,
+            (rnd.nextFloat() - 0.5f) * 26f, -34f - rnd.nextFloat() * 42f, 0.95f + rnd.nextFloat() * 0.4f, 11f + rnd.nextFloat() * 8f, 16f + rnd.nextFloat() * 14f)
 
     fun ring(px: Float, py: Float, color: Int) = add(RING, color, px, py, 0f, 0f, 2.3f, 8f)
 
@@ -61,6 +67,7 @@ class Particles(private val cap: Int = 200) {
                 }
                 RING -> size[i] += 110f * dt
                 GLINT -> rot[i] += dt * 3f
+                PUFF -> { x[i] += vx[i] * dt; y[i] += vy[i] * dt; vx[i] *= 1f - 1.4f * dt; size[i] += vr[i] * dt }
             }
             if (life[i] <= 0f || y[i] > H + 40f) {
                 val l = --n

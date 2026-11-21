@@ -39,7 +39,7 @@ class LevelsTest {
     }
 
     /**
-     * Раскладки уровней 1–100 не меняются (кроме 65, 85 и 91: на них нельзя было выиграть ни при какой ленте).
+     * Раскладки уровней 1–100 не меняются (кроме 65, 68, 85 и 91: на них нельзя было выиграть ни при какой ленте).
      * Хэш обновляется только осознанно, вместе с таблицей ATTEMPT в Levels.kt.
      */
     @Test
@@ -49,7 +49,7 @@ class LevelsTest {
             sb.append(l.id).append(':').append(l.columns.joinToString("|") { c -> c.joinToString(",") { "${it.c}.${it.n}.${it.arrow}" } })
                 .append(';').append(l.boxes.joinToString(",")).append(';').append(l.elevator).append('\n')
         }
-        assertEquals("раскладки уровней 1–100 изменились", -1022663484, sb.toString().hashCode())
+        assertEquals("раскладки уровней 1–100 изменились", -1009414953, sb.toString().hashCode())
     }
 
     @Test

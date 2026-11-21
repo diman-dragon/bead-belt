@@ -72,7 +72,7 @@ object Geo {
 
 /** Стенки воронки (x1, y1, x2, y2): шарики из лотков падают сюда и скатываются к воротам над конвейером. */
 val WALLS = arrayOf(
-    floatArrayOf(12f, 120f, 12f, 250f), floatArrayOf(12f, 250f, 160f, 328f),
-    floatArrayOf(160f, 328f, 200f, 328f),
-    floatArrayOf(200f, 328f, 348f, 250f), floatArrayOf(348f, 250f, 348f, 120f),
+    floatArrayOf(12f, 120f, 12f, 250f), floatArrayOf(12f, 250f, 171f, 328f),
+    floatArrayOf(171f, 328f, 189f, 328f),                       // отверстие: чуть шире шарика, шарики проходят по одному
+    floatArrayOf(189f, 328f, 348f, 250f), floatArrayOf(348f, 250f, 348f, 120f),
 )

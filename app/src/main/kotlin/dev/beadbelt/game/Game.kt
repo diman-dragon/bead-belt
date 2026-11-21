@@ -11,6 +11,9 @@ class Tray(val c: Int, n0: Int, val arrow: Int = 0) { var n = n0; var d = 0f }  
  * Собранная коробка тут же уступает место следующей и дозавершается в списке [Game.popping].
  */
 class Box(val c: Int, val slot: Int) { var n = 0; var res = 0; var pop = -1f; var enter = 1f; var locked = false
+    /** Толчок от упавшего шарика: 1 → 0, коробка слегка проседает и пружинит. */
+    var bump = 0f
+    var smokeT = 0f
     val committed: Int get() = n + res }
 class Flyer(val c: Int, val x0: Float, val y0: Float, val box: Box, val boxIdx: Int, val hole: Int) { var t = 0f }
 class Leaving(val tray: Tray, val x: Float) { var t = 0f }
@@ -24,8 +27,10 @@ enum class State { PLAY, WON, LOST }
 class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent: (Int, Int) -> Unit) {
     companion object {
         const val SPEED = 290f      // скорость ленты, логических единиц/с (исходно было 110)
-        const val POP_T = 0.5f
-        const val FLY_T = 0.2f
+        const val POP_T = 1.15f          // собранная коробка поднимается дымком и тает
+        const val FLY_T = 0.34f
+        /** Подъём дымком: сколько пикселей прошла коробка к моменту f (0..1) — медленно, потом легко уходит вверх. */
+        fun rise(f: Float): Float { val e = f.coerceIn(0f, 1f); return 170f * (e * e * (3f - 2f * e) * 0.55f + e * 0.45f) }
         const val ROCKET_T = 0.55f
     }
 
@@ -268,7 +273,10 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
             f.t += dt / FLY_T
             if (f.t >= 1f) {
                 f.box.res--; f.box.n++
-                fx.glint(boxX[f.boxIdx] + (f.hole - 1) * 22f, BOX_Y - 12f, f.c, rnd)
+                f.box.bump = 1f
+                val lx = boxX[f.boxIdx] + (f.hole - 1) * 22f
+                fx.glint(lx, BOX_Y - 12f, f.c, rnd)
+                fx.burst(lx, BOX_Y - 14f, f.c, 4, rnd, 46f)
                 if (f.box.n == BOX && f.box.pop < 0f) startPop(f.box, f.boxIdx)
                 flyers.removeAt(fi)
             }
@@ -285,11 +293,20 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
             ri--
         }
 
-        for (i in 0 until SLOTS) { val b = boxes[i] ?: continue; if (b.enter > 0f) b.enter = max(0f, b.enter - dt * 3f) }
+        for (i in 0 until SLOTS) { val b = boxes[i] ?: continue; if (b.enter > 0f) b.enter = max(0f, b.enter - dt * 3f); if (b.bump > 0f) b.bump = max(0f, b.bump - dt * 4.5f) }
         var bi = popping.size - 1
         while (bi >= 0) {
             val b = popping[bi]
-            if (b.pop >= 0f) { b.pop += dt; if (b.pop >= POP_T) popping.removeAt(bi) }
+            if (b.bump > 0f) b.bump = max(0f, b.bump - dt * 4.5f)
+            if (b.pop >= 0f) {
+                b.pop += dt
+                b.smokeT -= dt                                   // дымок тянется за поднимающейся коробкой
+                if (b.smokeT <= 0f && b.pop < POP_T * 0.8f) {
+                    b.smokeT = 0.055f
+                    fx.puff(boxX[b.slot], BOX_Y - rise(b.pop / POP_T) + 18f, b.c, rnd)
+                }
+                if (b.pop >= POP_T) popping.removeAt(bi)
+            }
             bi--
         }
 
@@ -355,6 +372,7 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
         burst(boxX[i], BOX_Y, b.c, 8)
         fx.ring(boxX[i], BOX_Y, b.c)
         repeat(2) { fx.glint(boxX[i] + (rnd.nextFloat() - 0.5f) * 56f, BOX_Y + (rnd.nextFloat() - 0.5f) * 56f, b.c, rnd) }
+        repeat(5) { fx.puff(boxX[i], BOX_Y + 10f, b.c, rnd) }
         onEvent(EV_POP, 0)
     }
 

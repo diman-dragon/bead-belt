@@ -20,6 +20,14 @@ class HopperPhysics(private val bodies: ArrayList<Body>) {
         const val NX = 23
         const val NY = 17
         const val GRAVITY = 1500f
+        const val ITER = 4                   // проходов решателя за шаг: больше — плотнее и честнее столкновения
+        const val GATE_HALF = 13f            // ворота над отверстием: ширина ±13
+
+        /** Плавная ступенька 0..1: слабые касания гасятся (куча лежит спокойно), сильные удары упруго отскакивают. */
+        fun smooth(x: Float, lo: Float, hi: Float): Float {
+            val t = ((x - lo) / (hi - lo)).coerceIn(0f, 1f)
+            return t * t * (3f - 2f * t)
+        }
     }
 
     /** Самый сильный удар за шаг (скорость сближения) и его место — игра превращает это в звук и блик. */
@@ -54,7 +62,7 @@ class HopperPhysics(private val bodies: ArrayList<Body>) {
         if (next.size < n) next = IntArray(n * 2)
         val m = 2f * BODY_R
         val m2 = m * m
-        repeat(3) {
+        repeat(ITER) {
             java.util.Arrays.fill(head, -1)
             for (i in 0 until n) { val c = cellOf(bodies[i]); next[i] = head[c]; head[c] = i }
             for (i in 0 until n) {
@@ -84,8 +92,8 @@ class HopperPhysics(private val bodies: ArrayList<Body>) {
         a.x -= dx * pen; a.y -= dy * pen; b.x += dx * pen; b.y += dy * pen
         val rv = (b.vx - a.vx) * dx + (b.vy - a.vy) * dy
         if (rv < 0f) {
-            // сильный удар отскакивает по-настоящему, слабый гасится — куча шариков спокойно ложится, не дрожит
-            val e = if (-rv > 60f) 0.7f else 0.08f
+            // упругость растёт со скоростью удара: слабый гасится (куча не дрожит), сильный отскакивает почти как стеклянный
+            val e = 0.86f * smooth(-rv, 30f, 190f)
             val imp = -rv * (1f + e) * 0.5f
             a.vx -= dx * imp; a.vy -= dy * imp; b.vx += dx * imp; b.vy += dy * imp
             noteHit(-rv, (a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f)
@@ -104,8 +112,12 @@ class HopperPhysics(private val bodies: ArrayList<Body>) {
                 a.x = px + dx * BODY_R; a.y = py + dy * BODY_R
                 val vn = a.vx * dx + a.vy * dy
                 if (vn < 0f) {
-                    val e = if (-vn > 90f) 0.55f else 0.12f
-                    a.vx -= (1f + e) * vn * dx; a.vy -= (1f + e) * vn * dy; a.vx *= 0.99f
+                    val e = 0.74f * smooth(-vn, 30f, 220f)
+                    a.vx -= (1f + e) * vn * dx; a.vy -= (1f + e) * vn * dy
+                    // лёгкое трение о стекло: шарик скатывается, а не скользит вечно
+                    val tx = -dy; val ty = dx
+                    val vt = a.vx * tx + a.vy * ty
+                    a.vx -= vt * 0.02f * tx; a.vy -= vt * 0.02f * ty
                     noteHit(-vn * 0.8f, a.x, a.y)
                 }
             }
@@ -118,7 +130,7 @@ class HopperPhysics(private val bodies: ArrayList<Body>) {
         var by = 0f
         for (i in 0 until bodies.size) {
             val b = bodies[i]
-            if (kotlin.math.abs(b.x - 180f) < 24f && b.y > 308f && b.y > by) { best = i; by = b.y }
+            if (kotlin.math.abs(b.x - 180f) < GATE_HALF && b.y > 308f && b.y > by) { best = i; by = b.y }
         }
         return if (best < 0) null else bodies.removeAt(best)
     }
