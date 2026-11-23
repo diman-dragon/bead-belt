@@ -3,6 +3,10 @@ package dev.beadbelt.game
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.Message
+import android.os.Process
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.PI
@@ -11,70 +15,87 @@ import kotlin.math.pow
 import kotlin.math.sin
 
 /**
- * Звуки без ресурсов в APK: при первом запуске синтезируются в короткие WAV (в фоне)
- * и грузятся в SoundPool. SoundPool играет с минимальной задержкой и не блокирует UI,
- * а высота «подбора шарика» растёт через playback rate — без отдельных файлов на каждую ноту.
+ * Звуки без ресурсов в APK: при первом запуске синтезируются в короткие WAV и грузятся в SoundPool.
+ *
+ * Почему раньше с включённым звуком игра подтормаживала: `SoundPool.play()` — синхронный вызов в аудиосервер,
+ * а его делали прямо из потока отрисовки, и на каждый «цок» шариков, подбор и хлопок коробки кадр ждал ответа.
+ * Теперь игра лишь кладёт в очередь короткое сообщение (без выделения памяти), а SoundPool создаётся и играет
+ * в отдельном потоке. Частые «цоки» не копятся: пока предыдущий не сыгран, новый отбрасывается.
  */
 class Sound(context: Context) {
-    var enabled = true
+    @Volatile var enabled = true
 
     private companion object {
         const val RATE = 22050
-        const val VERSION = 3
+        const val VERSION = 4
         const val PICK = "pick"; const val TAP = "tap"; const val POP = "pop"; const val WIN = "win"
         const val LOSE = "lose"; const val ROCKET = "rocket"; const val UNLOCK = "unlock"; const val CLINK = "clink"
-        val NAMES = listOf(PICK, TAP, POP, WIN, LOSE, ROCKET, UNLOCK, CLINK)
+        val NAMES = arrayOf(PICK, TAP, POP, WIN, LOSE, ROCKET, UNLOCK, CLINK)
+        // номера звуков в массивах
+        const val I_PICK = 0; const val I_TAP = 1; const val I_POP = 2; const val I_WIN = 3
+        const val I_LOSE = 4; const val I_ROCKET = 5; const val I_UNLOCK = 6; const val I_CLINK = 7
     }
 
-    private val pool: SoundPool? = try {
-        SoundPool.Builder().setMaxStreams(8).setAudioAttributes(
-            AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
-        ).build()
-    } catch (e: Exception) { null }
+    private val thread = HandlerThread("bead-sound", Process.THREAD_PRIORITY_AUDIO).also { it.start() }
+    private val handler = Handler(thread.looper) { msg -> playEvent(msg.what, msg.arg1); true }
 
-    private val ids = HashMap<String, Int>()
-    private val ready = HashSet<Int>()
+    // Всё ниже трогается только из потока звука, поэтому без блокировок.
+    private var pool: SoundPool? = null
+    private val ids = IntArray(NAMES.size)
+    private val ready = BooleanArray(NAMES.size)
 
     init {
-        val sp = pool
-        if (sp != null) {
-            sp.setOnLoadCompleteListener { _, id, status -> if (status == 0) synchronized(ready) { ready.add(id) } }
-            Thread({
-                try {
-                    val dir = File(context.cacheDir, "snd$VERSION").also { it.mkdirs() }
-                    for (name in NAMES) {
-                        val f = File(dir, "$name.wav")
-                        if (!f.exists() || f.length() == 0L) writeWav(f, synth(name))
-                        ids[name] = sp.load(f.absolutePath, 1)
-                    }
-                } catch (e: Exception) { /* звук не критичен */ }
-            }, "sound-init").also { it.isDaemon = true; it.priority = Thread.MIN_PRIORITY }.start()
+        handler.post {
+            try {
+                val sp = SoundPool.Builder().setMaxStreams(6).setAudioAttributes(
+                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+                ).build()
+                sp.setOnLoadCompleteListener { _, id, status ->
+                    if (status == 0) for (i in ids.indices) if (ids[i] == id) ready[i] = true
+                }
+                pool = sp
+                val dir = File(context.cacheDir, "snd$VERSION").also { it.mkdirs() }
+                for (i in NAMES.indices) {
+                    val f = File(dir, NAMES[i] + ".wav")
+                    if (!f.exists() || f.length() == 0L) writeWav(f, synth(NAMES[i]))
+                    ids[i] = sp.load(f.absolutePath, 1)
+                }
+            } catch (e: Exception) { /* звук не критичен */ }
         }
     }
 
-    private fun play(name: String, rate: Float = 1f, vol: Float = 1f) {
-        if (!enabled) return
+    private fun play(i: Int, rate: Float = 1f, vol: Float = 1f, priority: Int = 1) {
         val sp = pool ?: return
-        val id = ids[name] ?: return
-        val ok = synchronized(ready) { id in ready }
-        if (ok) sp.play(id, vol, vol, 1, 0, rate)
+        if (!ready[i]) return
+        sp.play(ids[i], vol, vol, priority, 0, rate)
     }
 
-    fun event(ev: Int, arg: Int) {
+    /** Вызывается в потоке звука. */
+    private fun playEvent(ev: Int, arg: Int) {
         when (ev) {
-            EV_PICK -> play(PICK, 2.0.pow(minOf(arg, 6) * 2 / 12.0).toFloat(), 0.8f)   // комбо: тон растёт по целым тонам
-            EV_TAP -> play(TAP, 1f, 0.7f)
-            EV_POP -> play(POP)
-            EV_WIN -> play(WIN)
-            EV_ROCKET -> play(ROCKET, 1f, 0.8f)
-            EV_UNLOCK -> play(UNLOCK)
-            EV_CLINK -> play(CLINK, 0.85f + arg * 0.07f, 0.18f + arg * 0.05f)   // сильнее удар — выше и громче
-            else -> play(LOSE)
+            EV_PICK -> play(I_PICK, 2.0.pow(minOf(arg, 6) * 2 / 12.0).toFloat(), 0.8f)   // комбо: тон растёт по целым тонам
+            EV_TAP -> play(I_TAP, 1f, 0.7f)
+            EV_POP -> play(I_POP)
+            EV_WIN -> play(I_WIN)
+            EV_ROCKET -> play(I_ROCKET, 1f, 0.8f)
+            EV_UNLOCK -> play(I_UNLOCK)
+            EV_CLINK -> play(I_CLINK, 0.85f + arg * 0.07f, 0.18f + arg * 0.05f, 0)    // сильнее удар — выше и громче
+            else -> play(I_LOSE)
         }
     }
 
-    fun release() { pool?.release() }
+    /** Вызывается из игры (поток отрисовки): только ставит событие в очередь. */
+    fun event(ev: Int, arg: Int) {
+        if (!enabled) return
+        if (ev == EV_CLINK && handler.hasMessages(EV_CLINK)) return      // частые «цоки» не копим
+        handler.sendMessage(Message.obtain(handler, ev, arg, 0))
+    }
+
+    fun release() {
+        handler.removeCallbacksAndMessages(null)
+        handler.post { pool?.release(); pool = null; thread.quitSafely() }
+    }
 
     // ---------- синтез ----------
 

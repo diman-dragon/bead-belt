@@ -8,12 +8,12 @@ val vCode = vName.split(".").map { it.toInt() }.let { it[0] * 100 + it[1] * 10 +
 
 android {
     namespace = "dev.beadbelt.game"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "dev.beadbelt.game"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = vCode
         versionName = vName
     }

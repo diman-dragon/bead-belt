@@ -8,11 +8,11 @@
 
 Bead Belt не собирает, не передаёт и не продаёт личные данные. Игра работает офлайн.
 
-- **Хранится только на вашем устройстве:** прогресс прохождения и настройка звука. Эти данные не покидают телефон и удаляются вместе с приложением.
+- **Хранится только на вашем устройстве:** прогресс прохождения, настройки звука, языка и темы. Эти данные не покидают телефон и удаляются вместе с приложением.
 - **Нет** аккаунтов, рекламы, аналитики, сторонних SDK сбора данных и встроенных покупок.
 - **Разрешения:** вибрация (для тактильного отклика). Доступа к контактам, камере, микрофону, геолокации и файлам игра не запрашивает.
 
-Контакт по вопросам: [ВАШ E-MAIL]
+Контакт по вопросам: support@example.com  *(пример — заменить на настоящий)*
 
 ## English
 
@@ -20,8 +20,8 @@ Bead Belt не собирает, не передаёт и не продаёт л
 
 Bead Belt does not collect, share or sell personal data. The game works offline.
 
-- **Stored on your device only:** level progress and the sound setting. This data never leaves your phone and is removed when you uninstall the app.
+- **Stored on your device only:** level progress and the sound, language and theme settings. This data never leaves your phone and is removed when you uninstall the app.
 - **No** accounts, ads, analytics, third-party data-collection SDKs or in-app purchases.
 - **Permissions:** vibration (haptic feedback). The game does not access contacts, camera, microphone, location or files.
 
-Contact: [YOUR E-MAIL]
+Contact: support@example.com *(placeholder — replace)*

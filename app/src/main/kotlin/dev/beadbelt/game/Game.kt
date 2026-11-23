@@ -53,6 +53,9 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
     /** Сколько раз игрок пользовался бустерами и «ещё шансом» на этом уровне. */
     var assists = 0
     val born = FloatArray(n)
+    /** Откуда шарик начал падать с горловины воронки на ленту (для отрисовки). */
+    val bornX = FloatArray(n)
+    val bornY = FloatArray(n)
     var phase = 0f
     val spawnQ = ArrayDeque<Spawn>()
     val hopper = ArrayList<Body>()
@@ -155,7 +158,7 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
         var hi = hopper.size - 1
         while (left > 0 && hi >= 0) {
             val b = hopper[hi]
-            if (b.c == c) { burst(b.x, b.y, c, 4); hopper.removeAt(hi); left-- }
+            if (b.c == c) { burst(b.x, b.y - LIFT, c, 4); hopper.removeAt(hi); left-- }
             hi--
         }
         val si = spawnQ.iterator()
@@ -248,7 +251,7 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
             for (i in 0 until hopper.size) { val b = hopper[i]; b.rx += (b.x - b.rx) * sm; b.ry += (b.y - b.ry) * sm }
             clinkT -= dt
             if (physics.hitSpeed > 130f && clinkT <= 0f) {     // сильный удар: блик и звонкий «цок»
-                fx.glint(physics.hitX, physics.hitY, rnd.nextInt(COLOR_COUNT), rnd)
+                fx.glint(physics.hitX, physics.hitY - LIFT, rnd.nextInt(COLOR_COUNT), rnd)
                 onEvent(EV_CLINK, min(7, (physics.hitSpeed / 90f).toInt()))
                 clinkT = 0.16f
             }
@@ -260,7 +263,7 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
                 val cur = (phase + j * sp) % Geo.L
                 if (cur < prev && slots[j] < 0) {
                     val body = physics.takeGate()
-                    if (body != null) { slots[j] = body.c; born[j] = time }
+                    if (body != null) { slots[j] = body.c; born[j] = time; bornX[j] = body.rx; bornY[j] = body.ry - LIFT }
                 }
             }
             phase %= Geo.L

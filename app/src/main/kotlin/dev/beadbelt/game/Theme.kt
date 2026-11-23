@@ -2,8 +2,14 @@ package dev.beadbelt.game
 
 import android.graphics.Typeface
 
-/** Цвета и шрифты в одном месте. */
+/**
+ * Цвета и шрифты в одном месте. Две темы: тёмная (чёрный фон, экономит батарею на OLED) и светлая.
+ * Цвета, зависящие от темы, — свойства-геттеры: при смене темы Assets и Painter пересоздаются.
+ */
 object Theme {
+    /** true — тёмная тема, false — светлая. */
+    var dark = true
+
     val WHITE = 0xFFFFFFFF.toInt()
     val BLACK = 0xFF000000.toInt()
     val INK = 0xFF0B1B3A.toInt()
@@ -12,15 +18,66 @@ object Theme {
     val GREEN = 0xFF2FD060.toInt()
     val RED = 0xFFFF5A6E.toInt()
 
-    // фон: небо → глубокий синий
-    val BG_TOP = 0xFF4AA8FF.toInt()
-    val BG_MID = 0xFF2C58E0.toInt()
-    val BG_BOTTOM = 0xFF162585.toInt()
+    // ---------- фон ----------
+    val bgTop: Int get() = if (dark) 0xFF0B1020.toInt() else 0xFFF3F8FF.toInt()
+    val bgMid: Int get() = if (dark) 0xFF000000.toInt() else 0xFFC4D9FF.toInt()
+    val bgBottom: Int get() = if (dark) 0xFF000000.toInt() else 0xFF97B6F0.toInt()
+    /** Свет сверху и его сила. */
+    val bgGlow: Int get() = if (dark) Theme.alpha(0xFF3A5BD9.toInt(), 46) else Theme.alpha(WHITE, 130)
+    val bokehScale: Float get() = if (dark) 0.5f else 1f
+    /** Виньетка по краям (в тёмной теме не нужна: фон и так чёрный). */
+    val vignette: Int get() = if (dark) 0 else Theme.alpha(0xFF3A5AA8.toInt(), 70)
+    /** Цвет затемнения при переходах между экранами. */
+    val fade: Int get() = if (dark) BLACK else 0xFFB4CCF7.toInt()
+
+    // ---------- текст на фоне ----------
+    val text: Int get() = if (dark) WHITE else INK
+    val textDim: Int get() = if (dark) Theme.alpha(WHITE, 130) else Theme.alpha(INK, 150)
+    /** Золотой текст на фоне (читается на чёрном и на светлом). */
+    val accentText: Int get() = if (dark) GOLD else 0xFF9A6200.toInt()
+    /** Цвет знака DataLaw: буква светлая на тёмном и тёмная на светлом. */
+    val logoBody: Int get() = if (dark) 0xFFF1F1F4.toInt() else 0xFF121216.toInt()
+
+    // ---------- элементы интерфейса ----------
+    val pillBg: Int get() = if (dark) Theme.alpha(0xFF1A1D27.toInt(), 215) else Theme.alpha(0xFF14265E.toInt(), 225)
+    val roundFace: Int get() = if (dark) 0xE0262A36.toInt() else 0xE0224A9E.toInt()
+    val roundFaceOff: Int get() = if (dark) 0xB0161922.toInt() else 0xB0172A62.toInt()
+    val btn2Face: Int get() = if (dark) 0xFF343A4A.toInt() else 0xFF4470E4.toInt()
+    val btn2Lip: Int get() = if (dark) 0xFF14161D.toInt() else 0xFF1B2F86.toInt()
+    val chipOff: Int get() = if (dark) 0xFF262A35.toInt() else 0xFF2E4488.toInt()
+    val chipOffLip: Int get() = if (dark) 0xFF0F1117.toInt() else 0xFF14214F.toInt()
+    val track: Int get() = if (dark) Theme.alpha(0xFF2A2F3C.toInt(), 200) else Theme.alpha(0xFF0A1850.toInt(), 160)
+    val overlay: Int get() = if (dark) 0xFF000000.toInt() else 0xFF050B24.toInt()
+    val cardFace: Int get() = if (dark) 0xFF15171E.toInt() else 0xFF1C2E6E.toInt()
+    val cardEdge: Int get() = if (dark) 0xFF424963.toInt() else 0xFF5873BC.toInt()
+    val lockedFace: Int get() = if (dark) Theme.alpha(0xFF2A2F3D.toInt(), 210) else Theme.alpha(0xFF0F2060.toInt(), 150)
+    val lockedLip: Int get() = if (dark) Theme.alpha(0xFF0E1016.toInt(), 230) else Theme.alpha(0xFF08123C.toInt(), 170)
+    val lockedText: Int get() = Theme.alpha(WHITE, if (dark) 90 else 150)
+    /** Рамка и стрелка подсказки над лотком. */
+    val pointer: Int get() = if (dark) WHITE else INK
+
+    // ---------- игровое поле: панель ленты и воронка ----------
+    val panelTop: Int get() = if (dark) 0xFF232837.toInt() else 0xFF25396C.toInt()
+    val panelBottom: Int get() = if (dark) 0xFF0C0E14.toInt() else 0xFF111C42.toInt()
+    val panelEdgeTop: Int get() = if (dark) 0xFF6F7896.toInt() else 0xFF7C98DC.toInt()
+    val panelEdgeBottom: Int get() = if (dark) 0xFF2A2F42.toInt() else 0xFF2B3E78.toInt()
+    val trough: Int get() = if (dark) 0xFF04060B.toInt() else 0xFF060C22.toInt()
+    val troughRim: Int get() = if (dark) 0xFF58617F.toInt() else 0xFF5A70AC.toInt()
+    val troughInner: Int get() = if (dark) 0xFF10131C.toInt() else 0xFF16224A.toInt()
+    val beltFace: Int get() = if (dark) 0xFF1D2232.toInt() else 0xFF24346A.toInt()
+    val slotHole: Int get() = if (dark) 0xFF04060A.toInt() else 0xFF080F2C.toInt()
+    val pocketHole: Int get() = if (dark) 0xFF03050A.toInt() else 0xFF060C26.toInt()
+    /** Стекло воронки: в светлой теме подкрашено синим, иначе белое стекло исчезает на светлом фоне. */
+    val glassTop: Int get() = if (dark) Theme.alpha(WHITE, 44) else Theme.alpha(0xFF2C58E0.toInt(), 54)
+    val glassMid: Int get() = if (dark) Theme.alpha(WHITE, 14) else Theme.alpha(0xFF2C58E0.toInt(), 24)
 
     val fontBlack: Typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
     val fontMedium: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
 
     fun alpha(c: Int, a: Int) = (c and 0x00FFFFFF) or (a.coerceIn(0, 255) shl 24)
+
+    /** Светлый ли цвет: тень рисуем только под светлым текстом. */
+    fun isLight(c: Int): Boolean = ((c shr 16 and 255) * 299 + (c shr 8 and 255) * 587 + (c and 255) * 114) / 1000 > 140
 
     fun mix(a: Int, b: Int, t: Float): Int {
         val u = t.coerceIn(0f, 1f)

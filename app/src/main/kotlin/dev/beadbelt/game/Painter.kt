@@ -45,16 +45,16 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         val bmp = Bitmap.createBitmap(ceil(sw * s).toInt(), ceil(sh * s).toInt(), Bitmap.Config.ARGB_8888)
         val cv = Canvas(bmp); cv.scale(s, s)
         val q = Paint(Paint.ANTI_ALIAS_FLAG)
-        q.shader = LinearGradient(0f, 0f, 0f, sh, intArrayOf(Theme.BG_TOP, Theme.BG_MID, Theme.BG_BOTTOM), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        q.shader = LinearGradient(0f, 0f, 0f, sh, intArrayOf(Theme.bgTop, Theme.bgMid, Theme.bgBottom), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         cv.drawRect(0f, 0f, sw, sh, q)
-        q.shader = RadialGradient(sw / 2, sh * 0.1f, sw * 1.0f, Theme.alpha(Theme.WHITE, 85), 0, Shader.TileMode.CLAMP)
+        q.shader = RadialGradient(sw / 2, sh * 0.1f, sw * 1.0f, Theme.bgGlow, 0, Shader.TileMode.CLAMP)
         cv.drawRect(0f, 0f, sw, sh, q)
         for (i in bx.indices) {
             val sz = (0.22f + bs[i] * 0.6f) * sw
             rect.set(bx[i] * sw - sz / 2, by[i] * sh - sz / 2, bx[i] * sw + sz / 2, by[i] * sh + sz / 2)
             cv.drawBitmap(a.glow, null, rect, a.bokeh[i % a.bokeh.size])
         }
-        q.shader = RadialGradient(sw / 2, sh / 2, maxOf(sw, sh) * 0.75f, intArrayOf(0, 0, Theme.alpha(0xFF050B30.toInt(), 150)), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+        q.shader = RadialGradient(sw / 2, sh / 2, maxOf(sw, sh) * 0.75f, intArrayOf(0, 0, Theme.vignette), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
         cv.drawRect(0f, 0f, sw, sh, q)
         return bmp
     }
@@ -68,18 +68,32 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
     // ---------- текст ----------
 
     fun text(
-        cv: Canvas, s: String, x: Float, y: Float, size: Float, color: Int = Theme.WHITE,
+        cv: Canvas, s: String, x: Float, y: Float, size: Float, color: Int = Theme.text,
         font: Typeface = Theme.fontBlack, align: Paint.Align = Paint.Align.CENTER, shadow: Boolean = true, outline: Int = 0,
+        spacing: Float = 0f,
     ) {
         p.shader = null
-        p.textSize = size; p.typeface = font; p.textAlign = align
-        if (shadow) { p.style = Paint.Style.FILL; p.color = Theme.alpha(Theme.BLACK, 80); cv.drawText(s, x, y + size * 0.07f, p) }
+        p.textSize = size; p.typeface = font; p.textAlign = align; p.letterSpacing = spacing
+        if (shadow && Theme.isLight(color)) { p.style = Paint.Style.FILL; p.color = Theme.alpha(Theme.BLACK, 80); cv.drawText(s, x, y + size * 0.07f, p) }
         if (outline != 0) {
             p.style = Paint.Style.STROKE; p.strokeWidth = size * 0.2f; p.strokeJoin = Paint.Join.ROUND; p.color = outline
             cv.drawText(s, x, y, p)
         }
         p.style = Paint.Style.FILL; p.color = color
         cv.drawText(s, x, y, p)
+        p.letterSpacing = 0f
+    }
+
+    /** Разбивает текст на строки не шире maxW. */
+    fun wrap(s: String, size: Float, font: Typeface, maxW: Float): List<String> {
+        val out = ArrayList<String>()
+        var line = ""
+        for (w in s.split(' ')) {
+            val t = if (line.isEmpty()) w else "$line $w"
+            if (line.isEmpty() || textWidth(t, size, font) <= maxW) line = t else { out.add(line); line = w }
+        }
+        if (line.isNotEmpty()) out.add(line)
+        return out
     }
 
     /** Заголовок с готовым градиентом (шейдер создаёт вызывающий один раз). */
@@ -122,8 +136,8 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
 
     /** kind: 0 — главная (зелёная), 1 — вторичная (синяя). press: 0..1 — «вдавленность». */
     fun button(cv: Canvas, l: Float, t: Float, r: Float, b: Float, label: String, kind: Int, press: Float) {
-        val face = if (kind == 0) 0xFF34D96A.toInt() else 0xFF4470E4.toInt()
-        val lip = if (kind == 0) 0xFF15853A.toInt() else 0xFF1B2F86.toInt()
+        val face = if (kind == 0) 0xFF34D96A.toInt() else Theme.btn2Face
+        val lip = if (kind == 0) 0xFF15853A.toInt() else Theme.btn2Lip
         val dy = 4f * press
         val rad = (b - t) * 0.32f
         p.style = Paint.Style.FILL; p.shader = null
@@ -136,7 +150,7 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         var size = (b - t) * 0.4f
         val tw = textWidth(label, size)
         if (tw > r - l - 28f) size *= (r - l - 28f) / tw          // длинная подпись ужимается, а не вылезает
-        text(cv, label, (l + r) / 2f, (t + b) / 2f + size * 0.4f + dy, size)
+        text(cv, label, (l + r) / 2f, (t + b) / 2f + size * 0.4f + dy, size, Theme.WHITE)
     }
 
     /** Круглая «стеклянная» кнопка HUD. */
@@ -144,12 +158,47 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         val r = r0 * (1f - 0.1f * press)
         p.style = Paint.Style.FILL; p.shader = null
         p.color = Theme.alpha(Theme.BLACK, 50); cv.drawCircle(x, y + 3f, r, p)
-        p.color = if (enabled) 0xE0224A9E.toInt() else 0xB0172A62.toInt(); cv.drawCircle(x, y, r, p)
+        p.color = if (enabled) Theme.roundFace else Theme.roundFaceOff; cv.drawCircle(x, y, r, p)
         p.color = Theme.alpha(Theme.WHITE, 36); rect.set(x - r * 0.72f, y - r * 0.92f, x + r * 0.72f, y - r * 0.05f); cv.drawOval(rect, p)
         p.style = Paint.Style.STROKE; p.strokeWidth = 2f; p.color = Theme.alpha(Theme.WHITE, 110); cv.drawCircle(x, y, r - 1f, p)
     }
 
+    /** Переключатель-плашка в настройках: выбранная — зелёная, остальные — приглушённые. */
+    fun chip(cv: Canvas, r: FloatArray, label: String, selected: Boolean, press: Float) {
+        val dy = 3f * press
+        val face = if (selected) 0xFF34D96A.toInt() else Theme.chipOff
+        val lip = if (selected) 0xFF15853A.toInt() else Theme.chipOffLip
+        p.style = Paint.Style.FILL; p.shader = null
+        p.color = lip; rect.set(r[0], r[1] + 4f, r[2], r[3] + 4f); cv.drawRoundRect(rect, 14f, 14f, p)
+        p.color = face; rect.set(r[0], r[1] + dy, r[2], r[3] + dy); cv.drawRoundRect(rect, 14f, 14f, p)
+        p.color = Theme.alpha(Theme.WHITE, if (selected) 46 else 18); rect.set(r[0] + 4f, r[1] + dy + 3f, r[2] - 4f, (r[1] + r[3]) / 2f + dy - 1f); cv.drawRoundRect(rect, 11f, 11f, p)
+        var size = 16f
+        val tw = textWidth(label, size)
+        if (tw > r[2] - r[0] - 10f) size *= (r[2] - r[0] - 10f) / tw
+        text(cv, label, (r[0] + r[2]) / 2f, (r[1] + r[3]) / 2f + size * 0.36f + dy, size, if (selected) Theme.WHITE else Theme.alpha(Theme.WHITE, 190), shadow = selected)
+    }
+
     // ---------- значки ----------
+
+    private fun vecGear(cv: Canvas) {
+        p.style = Paint.Style.FILL; p.shader = null; p.color = Theme.WHITE
+        for (i in 0 until 8) {
+            cv.save(); cv.rotate(i * 45f)
+            rect.set(-2.7f, -14f, 2.7f, -8.5f); cv.drawRoundRect(rect, 1.3f, 1.3f, p)
+            cv.restore()
+        }
+        p.style = Paint.Style.STROKE; p.strokeWidth = 5f
+        cv.drawCircle(0f, 0f, 8f, p)
+    }
+
+    private fun vecInfo(cv: Canvas) {
+        p.style = Paint.Style.FILL; p.shader = null
+        p.color = Theme.INK; cv.drawCircle(0f, 0f, 10.5f, p)
+        p.color = Theme.GOLD; cv.drawCircle(0f, 0f, 9f, p)
+        p.color = Theme.INK
+        cv.drawCircle(0f, -4.2f, 1.7f, p)
+        rect.set(-1.5f, -1f, 1.5f, 6f); cv.drawRoundRect(rect, 1.3f, 1.3f, p)
+    }
 
     private fun vecCoin(cv: Canvas, x: Float, y: Float, r: Float) {
         p.style = Paint.Style.FILL; p.shader = null
@@ -169,10 +218,10 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         val tw = textWidth(s, 19f)
         val w = 52f + tw
         p.style = Paint.Style.FILL; p.shader = null
-        p.color = Theme.alpha(0xFF0A1850.toInt(), 130); rect.set(x - w / 2, y - 17f, x + w / 2, y + 17f); cv.drawRoundRect(rect, 17f, 17f, p)
+        p.color = Theme.pillBg; rect.set(x - w / 2, y - 17f, x + w / 2, y + 17f); cv.drawRoundRect(rect, 17f, 17f, p)
         p.style = Paint.Style.STROKE; p.strokeWidth = 1.5f; p.color = Theme.alpha(Theme.WHITE, 70); cv.drawRoundRect(rect, 17f, 17f, p)
         coin(cv, x - w / 2 + 19f, y, 11f)
-        text(cv, s, x - w / 2 + 36f, y + 7f, 19f, align = Paint.Align.LEFT)
+        text(cv, s, x - w / 2 + 36f, y + 7f, 19f, Theme.WHITE, align = Paint.Align.LEFT)
     }
 
     private fun vecLock(cv: Canvas, x: Float, y: Float, sc: Float = 1f) {
@@ -286,7 +335,7 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
     fun progressBar(cv: Canvas, l: Float, t: Float, r: Float, b: Float, frac: Float) {
         val rad = (b - t) / 2f
         p.style = Paint.Style.FILL; p.shader = null
-        p.color = Theme.alpha(0xFF050B30.toInt(), 110); rect.set(l, t, r, b); cv.drawRoundRect(rect, rad, rad, p)
+        p.color = Theme.track; rect.set(l, t, r, b); cv.drawRoundRect(rect, rad, rad, p)
         if (frac > 0f) {
             val fr = maxOf(b - t, (r - l) * frac)
             p.color = 0xFF2FD060.toInt(); rect.set(l, t, l + fr, b); cv.drawRoundRect(rect, rad, rad, p)
@@ -315,6 +364,8 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         cv.drawBitmap(ic.bmp, null, rect, bp)
     }
 
+    private val icGear = bake(15f, 15f) { vecGear(it) }
+    private val icInfo = bake(11.5f, 11.5f) { vecInfo(it) }
     private val icSpeakerOn = bake(18f, 14f) { vecSpeaker(it, 0f, 0f, true) }
     private val icSpeakerOff = bake(18f, 14f) { vecSpeaker(it, 0f, 0f, false) }
     private val icRestart = bake(17f, 17f) { vecRestart(it, 0f, 0f) }
@@ -355,6 +406,8 @@ class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
         c.drawPath(path, p)
     }
 
+    fun gear(cv: Canvas, x: Float, y: Float) = put(cv, icGear, x, y)
+    fun info(cv: Canvas, x: Float, y: Float, sc: Float = 1f, alpha: Int = 255) = put(cv, icInfo, x, y, sc, alpha)
     fun speaker(cv: Canvas, x: Float, y: Float, on: Boolean) = put(cv, if (on) icSpeakerOn else icSpeakerOff, x, y)
     fun restart(cv: Canvas, x: Float, y: Float) = put(cv, icRestart, x, y)
     fun back(cv: Canvas, x: Float, y: Float) = put(cv, icBack, x, y)

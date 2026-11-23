@@ -1,6 +1,7 @@
 package dev.beadbelt.game
 
 import android.content.Context
+import android.content.res.Configuration
 
 // виды платных помощников
 const val AID_ROCKET = 0
@@ -15,7 +16,7 @@ const val TIP_LIFT = 3
 const val TIP_HINT = 4
 const val TIP_FULL = 5
 
-/** Всё, что сохраняется между запусками: уровни, звёзды, монеты, помощники, подарок, звук. */
+/** Всё, что сохраняется между запусками: уровни, звёзды, монеты, помощники, подарок, звук, язык и тема. */
 class Progress(context: Context) {
     companion object {
         const val ROCKET_PRICE = 60
@@ -34,6 +35,9 @@ class Progress(context: Context) {
 
         /** Награда за день серии: 20, 30, … 80 монет. */
         fun giftCoins(streak: Int) = 20 + 10 * (streak.coerceIn(1, 7) - 1)
+
+        fun systemIsDark(context: Context) =
+            context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
     }
 
     private val prefs = context.getSharedPreferences("bead", Context.MODE_PRIVATE)
@@ -45,6 +49,12 @@ class Progress(context: Context) {
     var hints = prefs.getInt("hints", 3); private set
     var sound = prefs.getBoolean("sound", true)
         set(v) { field = v; prefs.edit().putBoolean("sound", v).apply() }
+    /** Язык: 0 — как в системе, 1 — русский, 2 — английский. */
+    var langMode = prefs.getInt("lang", Lang.AUTO).coerceIn(Lang.AUTO, Lang.EN)
+        set(v) { field = v; prefs.edit().putInt("lang", v).apply() }
+    /** Тема: пока игрок ничего не выбрал, повторяет тему системы. */
+    var darkTheme = prefs.getBoolean("dark", systemIsDark(context))
+        set(v) { field = v; prefs.edit().putBoolean("dark", v).apply() }
 
     private val stars = IntArray(LEVEL_COUNT + 1).also { arr ->
         val s = prefs.getString("stars", "") ?: ""

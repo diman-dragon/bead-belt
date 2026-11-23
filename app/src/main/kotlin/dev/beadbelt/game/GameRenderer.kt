@@ -16,6 +16,7 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         const val ROCKET_LABEL = "${Progress.ROCKET_PRICE}"
         const val RETURN_LABEL = "${Progress.RETURN_PRICE}"
         const val HINT_LABEL = "${Progress.HINT_PRICE}"
+        const val FALL_T = 0.26f        // сколько шарик падает с горловины на ленту
     }
 
     private val pt = FloatArray(3)
@@ -26,16 +27,19 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
     private val returnText = NumText()
     private val hintText = NumText()
     private var titleId = -1
+    private var titleVer = -1
     private var title = ""
 
-    fun draw(cv: Canvas, game: Game, ui: Ui, hint: String, hintAlpha: Float) {
+    fun draw(cv: Canvas, game: Game, ui: Ui, hint: String, hintAlpha: Float, hasInfo: Boolean) {
         cv.save()
         if (game.shake > 0f) cv.translate(sin(ui.clock * 95f) * game.shake * 3f, cos(ui.clock * 81f) * game.shake * 2.5f)
 
-        hud(cv, game, ui, hint, hintAlpha)
+        hud(cv, game, ui, hint, hintAlpha, hasInfo)
         cv.drawBitmap(a.board, null, g.rect.also { it.set(0f, Assets.BOARD_Y0, W, Assets.BOARD_Y0 + Assets.BOARD_H) }, boardPaint)
+        cv.save(); cv.translate(0f, -LIFT)           // лотки и воронка подняты над лентой
         trays(cv, game, ui)
         hopperMarbles(cv, game)
+        cv.restore()
         beltMarbles(cv, game, ui)
         boxes(cv, game)
         flyers(cv, game)
@@ -48,15 +52,31 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
 
     // ---------- HUD ----------
 
-    private fun hud(cv: Canvas, game: Game, ui: Ui, hint: String, hintAlpha: Float) {
-        if (titleId != game.level.id) { titleId = game.level.id; title = "Уровень $titleId" }
-        g.text(cv, title, 180f, 34f, 22f)
-        g.progressBar(cv, 80f, 46f, 280f, 62f, game.progress)
-        g.text(cv, doneText.of(game.done, game.total), 180f, 58f, 10.5f, shadow = false)
+    /** Левый край и центр группы «текст подсказки + значок i»: подсказка сдвинута влево на пол-значка. */
+    private val hintSize = 13f
+    private fun hintSizeFor(hint: String): Float {
+        val w = g.textWidth(hint, hintSize, Theme.fontMedium)
+        return if (w > 290f) hintSize * 290f / w else hintSize
+    }
+
+    /** X центра значка «i» для данной подсказки (нужен и для рисования, и для нажатия). */
+    fun infoX(hint: String): Float {
+        val size = hintSizeFor(hint)
+        return 180f - 13f + g.textWidth(hint, size, Theme.fontMedium) / 2f + 16f
+    }
+
+    private fun hud(cv: Canvas, game: Game, ui: Ui, hint: String, hintAlpha: Float, hasInfo: Boolean) {
+        if (titleId != game.level.id || titleVer != Lang.version) { titleId = game.level.id; titleVer = Lang.version; title = tr("Уровень $titleId", "Level $titleId") }
+        g.text(cv, title, 180f, 31f, 21f)
+        g.progressBar(cv, 80f, 38f, 280f, 54f, game.progress)
+        g.text(cv, doneText.of(game.done, game.total), 180f, 50f, 10.5f, Theme.WHITE, shadow = false)
         g.roundButton(cv, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R, ui.pr(BTN_SOUND)); g.speaker(cv, Layout.HUD_L_X, Layout.HUD_Y, progress.sound)
         g.roundButton(cv, Layout.HUD_R_X, Layout.HUD_Y, Layout.HUD_R, ui.pr(BTN_RESTART)); g.restart(cv, Layout.HUD_R_X, Layout.HUD_Y)
         if (hint.isNotEmpty() && hintAlpha > 0f) {
-            g.text(cv, hint, 180f, 88f, 13f, Theme.alpha(Theme.WHITE, (hintAlpha * 235).toInt()), Theme.fontMedium)
+            val size = hintSizeFor(hint)
+            val shift = if (hasInfo) 13f else 0f
+            g.text(cv, hint, 180f - shift, Layout.HINT_Y, size, Theme.alpha(Theme.text, (hintAlpha * 235).toInt()), Theme.fontMedium)
+            if (hasInfo) g.info(cv, infoX(hint), Layout.HINT_Y - 4f, 1f + 0.06f * sin(ui.clock * 4f), (hintAlpha * 255).toInt())
         }
     }
 
@@ -81,8 +101,12 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         }
         for (j in 0 until game.n) {
             val c = game.slots[j]; if (c < 0) continue
-            val drop = (1f - (game.time - game.born[j]) / 0.15f).coerceIn(0f, 1f)
-            g.marble(cv, px[j], py[j] - drop * 14f, mr, c)
+            val u = ((game.time - game.born[j]) / FALL_T).coerceIn(0f, 1f)
+            if (u >= 1f) { g.marble(cv, px[j], py[j], mr, c); continue }
+            // шарик падает с горловины воронки и ложится в проезжающее гнездо: ускоряется, как под тяжестью
+            val e = u * u
+            val x0 = game.bornX[j]; val y0 = game.bornY[j]
+            g.marble(cv, x0 + (px[j] - x0) * e, y0 + (py[j] - y0) * e, BODY_R + (mr - BODY_R) * e, c)
         }
         val full = game.occupied >= game.n - 2
         val pulse = if (full) 1f + 0.06f * sin(ui.clock * 10f) else 1f
@@ -155,12 +179,14 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         val d = game.cols[ci][0].d
         val p = g.p
         p.style = Paint.Style.STROKE; p.shader = null; p.strokeWidth = 4.5f
-        p.color = Theme.alpha(Theme.WHITE, ((150 + 105 * pulse) * fade).toInt())
+        p.color = Theme.alpha(Theme.pointer, ((150 + 105 * pulse) * fade).toInt())
         outline(cv, game, ci, d, p)
         val y = TRAY_Y - 17f * d - 58f - abs(sin(ui.clock * 5f)) * 10f
-        cv.save(); cv.translate(game.colX[ci], y); cv.rotate(90f)   // стрелка-вправо, повёрнутая вниз
-        g.arrow(cv, 0f, 0f, false, 3.4f, (255 * fade).toInt())
-        cv.restore()
+        // стрелка вниз над лотком: рисуется путём, чтобы цвет зависел от темы
+        val ax = game.colX[ci]
+        p.style = Paint.Style.FILL; p.color = Theme.alpha(Theme.pointer, (255 * fade).toInt())
+        g.path.reset(); g.path.moveTo(ax - 11f, y - 9f); g.path.lineTo(ax + 11f, y - 9f); g.path.lineTo(ax, y + 11f); g.path.close()
+        cv.drawPath(g.path, p)
     }
 
     private inline fun eachLink(game: Game, f: (from: Int, to: Int, right: Boolean) -> Unit) {
@@ -307,7 +333,7 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
             val t = pp.t
             val pop = if (t < 0.15f) t / 0.15f * 1.25f else 1.25f - 0.25f * min(1f, (t - 0.15f) / 0.15f)
             cv.save(); cv.translate(pp.x, pp.y - 46f * t); cv.scale(pop, pop)
-            g.text(cv, pp.text, 0f, 0f, 26f, Theme.alpha(Theme.pal[pp.c][0], ((1f - t * t) * 255).toInt()))
+            g.text(cv, pp.text, 0f, 0f, 26f, Theme.alpha(Theme.pal[pp.c][if (Theme.dark) 0 else 1], ((1f - t * t) * 255).toInt()))
             cv.restore()
         }
     }

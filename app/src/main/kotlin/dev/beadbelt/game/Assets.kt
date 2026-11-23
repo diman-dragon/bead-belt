@@ -22,8 +22,8 @@ class Assets(scale: Float) {
         const val EXTRA = 6f        // нижний борт ящика
         const val TRAY_W = 76f
         const val TRAY_H = 84f
-        const val BOARD_Y0 = 100f   // верх запечённого поля (воронка + лента)
-        const val BOARD_H = 396f
+        const val BOARD_Y0 = 60f    // верх запечённого поля (воронка + лента)
+        const val BOARD_H = 436f
     }
 
     val k = scale.coerceIn(1f, 2f)        // «лёгкое» разрешение запекания: меньше памяти и заливки
@@ -53,10 +53,14 @@ class Assets(scale: Float) {
         Canvas(it).drawCircle(64f, 64f, 64f, q)
     }
 
-    /** Кисти боке: фильтр SRC_IN красит белое пятно, альфа заложена в цвет. */
+    /** Кисти боке: фильтр SRC_IN красит белое пятно, альфа заложена в цвет (в тёмной теме слабее). */
     val bokeh: Array<Paint> = arrayOf(0x3A9FE0FF, 0x30B58CFF, 0x2EFFFFFF, 0x2860F0FF, 0x28FF9AD5).map { col ->
-        Paint(Paint.FILTER_BITMAP_FLAG).apply { colorFilter = PorterDuffColorFilter(col, PorterDuff.Mode.SRC_IN) }
+        val a = ((col ushr 24) * Theme.bokehScale).toInt()
+        Paint(Paint.FILTER_BITMAP_FLAG).apply { colorFilter = PorterDuffColorFilter((col and 0xFFFFFF) or (a shl 24), PorterDuff.Mode.SRC_IN) }
     }.toTypedArray()
+
+    /** Золотое свечение (заставка и меню). */
+    val goldGlow: Paint = Paint(Paint.FILTER_BITMAP_FLAG).apply { colorFilter = PorterDuffColorFilter(0x66FFC21F, PorterDuff.Mode.SRC_IN) }
 
     private fun bakeMarble(c: Int): Bitmap {
         val s = marbleSize
@@ -169,7 +173,7 @@ class Assets(scale: Float) {
         val cv = Canvas(bmp); cv.scale(k, k)
         val q = paint()
         q.color = Theme.alpha(white, 60); cv.drawCircle(15f, 16f, 14f, q)
-        q.color = 0xFF060C26.toInt(); cv.drawCircle(15f, 15f, 13.6f, q)
+        q.color = Theme.pocketHole; cv.drawCircle(15f, 15f, 13.6f, q)
         cv.save(); cv.clipPath(Path().apply { addCircle(15f, 15f, 13.6f, Path.Direction.CW) })
         q.shader = LinearGradient(0f, 1f, 0f, 16f, Theme.alpha(Theme.BLACK, 150), 0, Shader.TileMode.CLAMP)
         cv.drawRect(0f, 1f, 30f, 16f, q); q.shader = null
@@ -187,24 +191,17 @@ class Assets(scale: Float) {
         val rr = RectF()
         val path = Path()
 
-        // воронка: стеклянное тело — светлее у краёв и голубое свечение у горловины
-        path.moveTo(WALLS[0][0], WALLS[0][1])
-        for (w in WALLS) path.lineTo(w[2], w[3])
-        q.style = Paint.Style.FILL
-        q.shader = LinearGradient(0f, 120f, 0f, 332f, intArrayOf(Theme.alpha(white, 44), Theme.alpha(white, 14), Theme.alpha(0xFF8FEAFF.toInt(), 70)), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
-        cv.drawPath(path, q); q.shader = null
-
         // панель ленты
         rr.set(8f, 312f, 352f, 472f)
         q.color = Theme.alpha(Theme.BLACK, 70); rr.offset(0f, 6f); cv.drawRoundRect(rr, 28f, 28f, q); rr.offset(0f, -6f)
-        q.shader = LinearGradient(0f, 312f, 0f, 472f, 0xFF25396C.toInt(), 0xFF111C42.toInt(), Shader.TileMode.CLAMP)
+        q.shader = LinearGradient(0f, 312f, 0f, 472f, Theme.panelTop, Theme.panelBottom, Shader.TileMode.CLAMP)
         cv.drawRoundRect(rr, 28f, 28f, q); q.shader = null
         cv.save(); cv.clipPath(Path().apply { addRoundRect(rr, 28f, 28f, Path.Direction.CW) })
         q.shader = LinearGradient(0f, 312f, 0f, 352f, Theme.alpha(white, 34), 0, Shader.TileMode.CLAMP)
         cv.drawRect(8f, 312f, 352f, 352f, q); q.shader = null
         cv.restore()
         q.style = Paint.Style.STROKE; q.strokeWidth = 3f
-        q.shader = LinearGradient(0f, 312f, 0f, 472f, 0xFF7C98DC.toInt(), 0xFF2B3E78.toInt(), Shader.TileMode.CLAMP)
+        q.shader = LinearGradient(0f, 312f, 0f, 472f, Theme.panelEdgeTop, Theme.panelEdgeBottom, Shader.TileMode.CLAMP)
         cv.drawRoundRect(rr, 28f, 28f, q); q.shader = null
 
         // гнёзда, через которые шарики уходят в коробки
@@ -212,7 +209,7 @@ class Assets(scale: Float) {
         for (i in 0 until SLOTS) {
             val x = 54f + 84f * i
             path.reset(); path.moveTo(x - 19f, 462f); path.lineTo(x + 19f, 462f); path.lineTo(x + 12f, 478f); path.lineTo(x - 12f, 478f); path.close()
-            q.color = 0xFF080F2C.toInt(); cv.drawPath(path, q)
+            q.color = Theme.slotHole; cv.drawPath(path, q)
             q.style = Paint.Style.STROKE; q.strokeWidth = 1.5f; q.color = Theme.alpha(white, 50); cv.drawPath(path, q); q.style = Paint.Style.FILL
         }
 
@@ -220,18 +217,33 @@ class Assets(scale: Float) {
         rr.set(Geo.CX - Geo.A - Geo.R, Geo.CY - Geo.R, Geo.CX + Geo.A + Geo.R, Geo.CY + Geo.R)
         path.reset(); path.addRoundRect(rr, Geo.R, Geo.R, Path.Direction.CW)
         q.style = Paint.Style.STROKE; q.strokeJoin = Paint.Join.ROUND
-        q.strokeWidth = 46f; q.color = 0xFF060C22.toInt(); cv.drawPath(path, q)
-        q.strokeWidth = 40f; q.color = 0xFF5A70AC.toInt(); cv.drawPath(path, q)
-        q.strokeWidth = 34f; q.color = 0xFF16224A.toInt(); cv.drawPath(path, q)
-        q.strokeWidth = 30f; q.color = 0xFF24346A.toInt(); cv.drawPath(path, q)
+        q.strokeWidth = 46f; q.color = Theme.trough; cv.drawPath(path, q)
+        q.strokeWidth = 40f; q.color = Theme.troughRim; cv.drawPath(path, q)
+        q.strokeWidth = 34f; q.color = Theme.troughInner; cv.drawPath(path, q)
+        q.strokeWidth = 30f; q.color = Theme.beltFace; cv.drawPath(path, q)
         q.strokeWidth = 1.4f; q.color = Theme.alpha(white, 70)
         for (d in floatArrayOf(18.5f, -18.5f)) {
             rr.set(Geo.CX - Geo.A - Geo.R - d, Geo.CY - Geo.R - d, Geo.CX + Geo.A + Geo.R + d, Geo.CY + Geo.R + d)
             path.reset(); path.addRoundRect(rr, Geo.R + d, Geo.R + d, Path.Direction.CW); cv.drawPath(path, q)
         }
 
-        // металлическая горловина: через неё шарики падают на ленту
+        // световой луч от горловины воронки до ленты: показывает, куда падают шарики
         q.style = Paint.Style.FILL; q.strokeCap = Paint.Cap.BUTT
+        val beamTop = 332f - LIFT + 14f
+        q.shader = LinearGradient(0f, beamTop, 0f, Geo.CY - Geo.R, Theme.alpha(0xFF9CF0FF.toInt(), 70), 0, Shader.TileMode.CLAMP)
+        rr.set(Geo.CX - 9f, beamTop, Geo.CX + 9f, Geo.CY - Geo.R + 4f); cv.drawRoundRect(rr, 8f, 8f, q); q.shader = null
+
+        // ---- воронка: поднята над лентой на LIFT ----
+        cv.save(); cv.translate(0f, -LIFT)
+
+        // стеклянное тело — светлее у краёв и голубое свечение у горловины
+        path.reset(); path.moveTo(WALLS[0][0], WALLS[0][1])
+        for (w in WALLS) path.lineTo(w[2], w[3])
+        q.style = Paint.Style.FILL
+        q.shader = LinearGradient(0f, 120f, 0f, 332f, intArrayOf(Theme.glassTop, Theme.glassMid, Theme.alpha(0xFF8FEAFF.toInt(), 70)), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
+        cv.drawPath(path, q); q.shader = null
+
+        // металлическая горловина
         path.reset(); path.moveTo(150f, 326f); path.lineTo(210f, 326f); path.lineTo(199f, 343f); path.lineTo(161f, 343f); path.close()
         q.shader = LinearGradient(0f, 326f, 0f, 343f, 0xFFD4E0FF.toInt(), 0xFF5A70AC.toInt(), Shader.TileMode.CLAMP)
         cv.drawPath(path, q); q.shader = null
@@ -262,10 +274,11 @@ class Assets(scale: Float) {
             q.style = Paint.Style.STROKE; q.strokeWidth = 1.6f; q.color = 0xFF22356F.toInt(); cv.drawRoundRect(rr, 7f, 7f, q); q.style = Paint.Style.FILL
         }
 
-        // свечение у ворот
+        // свечение у горловины
         q.style = Paint.Style.FILL; q.strokeCap = Paint.Cap.BUTT
-        q.shader = RadialGradient(Geo.CX, 336f, 30f, Theme.alpha(0xFF9CF0FF.toInt(), 110), 0, Shader.TileMode.CLAMP)
-        cv.drawCircle(Geo.CX, 336f, 30f, q); q.shader = null
+        q.shader = RadialGradient(Geo.CX, 340f, 30f, Theme.alpha(0xFF9CF0FF.toInt(), 110), 0, Shader.TileMode.CLAMP)
+        cv.drawCircle(Geo.CX, 340f, 30f, q); q.shader = null
+        cv.restore()
         return bmp
     }
 }

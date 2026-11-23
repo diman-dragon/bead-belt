@@ -16,6 +16,13 @@ const val BTN_HINT = 11
 const val BTN_REVIVE = 12
 const val BTN_GIFT = 13
 const val BTN_HELP = 14
+const val BTN_SETTINGS = 15
+const val BTN_INFO = 16         // значок «i» рядом с подсказкой
+const val BTN_INFO_OK = 17      // закрыть окно с пояснением
+const val BTN_LANG = 20         // BTN_LANG + 0 авто, 1 русский, 2 английский
+const val BTN_THEME = 30        // BTN_THEME + 0 тёмная, 1 светлая
+const val BTN_SOUND_ON = 40
+const val BTN_SOUND_OFF = 41
 const val BTN_LEVEL = 1000      // BTN_LEVEL + номер уровня
 
 /** Раскладка экранов в логических координатах 360x640 — общая для рисования и для нажатий. */
@@ -28,6 +35,20 @@ object Layout {
     const val MENU_GIFT_X = 108f
     const val MENU_HELP_X = 252f
     const val MENU_ROUND_R = 25f
+    const val MENU_GEAR_X = 38f
+    const val MENU_GEAR_Y = 40f
+
+    // настройки: ряды плашек
+    val SET_CARD = floatArrayOf(20f, 86f, 340f, 420f)
+    val LANG_CHIPS = Array(3) { floatArrayOf(36f + it * 99f, 146f, 126f + it * 99f, 190f) }
+    val THEME_CHIPS = Array(2) { floatArrayOf(36f + it * 148f, 254f, 176f + it * 148f, 298f) }
+    val SOUND_CHIPS = Array(2) { floatArrayOf(36f + it * 148f, 362f, 176f + it * 148f, 406f) }
+
+    // окно «что это за подсказка»
+    val INFO_CARD = floatArrayOf(24f, 130f, 336f, 504f)
+    val INFO_OK = floatArrayOf(80f, 446f, 280f, 490f)
+    /** Строка подсказки в игре: базовая линия текста и центр значка «i». */
+    const val HINT_Y = 70f
 
     // кнопки HUD
     const val HUD_L_X = 38f
