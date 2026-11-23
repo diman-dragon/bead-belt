@@ -54,9 +54,10 @@ class LevelsTest {
 
     @Test
     fun secondHundredIsHarder() {
-        assertEquals(200, LEVEL_COUNT)
+        assertEquals(500, LEVEL_COUNT)
         assertTrue(all.filter { it.id in 101..150 }.all { it.boxes.size == 32 })
-        assertTrue(all.filter { it.id > 150 }.all { it.boxes.size == 40 })
+        assertTrue(all.filter { it.id in 151..350 }.all { it.boxes.size == 40 })
+        assertTrue(all.filter { it.id > 350 }.all { it.boxes.size == 48 })
         assertTrue(all.filter { it.id > 100 && it.id % 2 == 0 }.all { it.elevator >= 0 })
         val avgArrows = { r: IntRange -> all.filter { it.id in r }.map { l -> l.columns.flatten().count { it.arrow != 0 } }.average() }
         assertTrue("стрелок должно стать больше", avgArrows(101..200) > avgArrows(41..100))

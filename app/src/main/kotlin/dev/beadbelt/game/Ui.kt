@@ -47,8 +47,16 @@ object Layout {
     // окно «что это за подсказка»
     val INFO_CARD = floatArrayOf(24f, 130f, 336f, 504f)
     val INFO_OK = floatArrayOf(80f, 446f, 280f, 490f)
-    /** Строка подсказки в игре: базовая линия текста и центр значка «i». */
-    const val HINT_Y = 70f
+    /** Окно подсказки в игре (всплывающая карточка под шапкой): рамка, текст в одну-две строки, значок «i» справа. */
+    const val HINT_X0 = 12f
+    const val HINT_X1 = 348f
+    const val HINT_TOP = 64f
+    const val HINT_H1 = 32f
+    const val HINT_H2 = 42f
+    const val HINT_SIZE = 13f
+    const val HINT_TEXT_X = 62f
+    const val HINT_TEXT_W = 274f
+    const val HINT_INFO_X = 328f
 
     // кнопки HUD
     const val HUD_L_X = 38f
@@ -102,5 +110,7 @@ class Ui {
     /** Сообщение в меню (подарок и т. п.) и время его появления. */
     var menuMsg = ""
     var menuMsgAt = -100f
+    /** Время (по ui.clock), когда открыто меню: от него идут анимации появления. */
+    var menuAt = 0f
     fun pr(id: Int) = if (pressId == id) press else 0f
 }

@@ -14,6 +14,7 @@ import kotlin.math.min
 
 private const val BTN_BLOCK = -1     // нажатие поглощено (диалог, пауза), но действия нет
 private const val SPLASH_LEN = 3.1f     // сколько секунд длится заставка
+private const val VERSION_FALLBACK = "0.8.1"
 
 /**
  * Вид игры: цикл кадров, ввод и переходы между экранами.
@@ -25,7 +26,7 @@ class GameView(context: Context) : View(context) {
     private val progress = Progress(context).also { Lang.set(it.langMode); Theme.dark = it.darkTheme }
     private val sound = Sound(context).also { it.enabled = progress.sound }
     private val ui = Ui()
-    private val version = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "" } catch (e: Exception) { "" }
+    private val version = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: VERSION_FALLBACK } catch (e: Exception) { VERSION_FALLBACK }
     private val touchSlop = 12f * resources.displayMetrics.density
     private val fadePaint = Paint()
 
@@ -199,6 +200,7 @@ class GameView(context: Context) : View(context) {
 
     private fun go(next: Screen) {
         screen = next; fade = 1f; ui.pressId = BTN_NONE; flingV = 0f; ui.hintCol = -1; infoOpen = false
+        if (next == Screen.MENU) ui.menuAt = ui.clock
         if (next == Screen.LEVELS) {
             val row = (progress.unlocked - 1) / Layout.LV_COLS
             ui.scroll = (row * Layout.LV_PITCH - 180f).coerceIn(0f, Layout.maxScroll())
@@ -227,9 +229,9 @@ class GameView(context: Context) : View(context) {
                 tr("Лотки стоят вверху. Нажми на лоток, и его шарики высыплются в воронку и покатятся на конвейер. Шарик сам залетит в коробку своего цвета, когда проедет мимо.",
                     "The trays are at the top. Tap one and its beads drop into the funnel and roll onto the belt. A bead jumps into the box of its own color as it passes by."))
             lv.columns.any { c -> c.any { it.arrow != 0 } } && !progress.tipSeen(TIP_ARROWS) -> Triple(TIP_ARROWS,
-                tr("Золотая скоба: тап запустит оба лотка сразу", "Golden clasp: one tap launches both trays"),
-                tr("Лотки, соединённые золотой скобой со стрелкой, связаны. Нажми на ведущий (у него толстая золотая рамка), и сосед высыплется вместе с ним.",
-                    "Trays joined by a golden clasp are linked. Tap the leading one (thick golden frame) and its neighbor empties together with it."))
+                tr("Золотая стрелка между лотками: тап запустит оба", "Golden arrow between trays: one tap launches both"),
+                tr("Лотки в золотой рамке связаны стрелкой. Нажми на тот лоток, от которого стрелка идёт, и сосед высыплется вместе с ним.",
+                    "Trays in a golden frame are linked by an arrow. Tap the tray the arrow starts from and its neighbor empties together with it."))
             lv.elevator >= 0 && !progress.tipSeen(TIP_LIFT) -> Triple(TIP_LIFT,
                 tr("Замок: коробка откроется после первой собранной", "Padlock: this box opens after the first one is full"),
                 tr("Коробка с замком пока не принимает шарики. Собери любую другую коробку, и замок откроется.",
@@ -308,8 +310,7 @@ class GameView(context: Context) : View(context) {
                     }
                 }
                 return when {
-                    hintInfo.isNotEmpty() && hintAlphaNow() > 0.3f &&
-                        Layout.inCircle(x, y, renderer?.infoX(hint) ?: -100f, Layout.HINT_Y - 4f, 20f) -> BTN_INFO
+                    hintInfo.isNotEmpty() && hintAlphaNow() > 0.3f && renderer?.hintHit(x, y) == true -> BTN_INFO
                     Layout.inCircle(x, y, Layout.HUD_R_X, Layout.HUD_Y, Layout.HUD_R + 6f) -> BTN_RESTART
                     Layout.inCircle(x, y, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R + 6f) -> BTN_SOUND
                     Layout.inCircle(x, y, ROCKET_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_ROCKET
@@ -444,7 +445,7 @@ class GameView(context: Context) : View(context) {
             Screen.LEVELS -> screens?.levels(cv, ui)
             Screen.HELP -> screens?.help(cv, ui)
             Screen.PLAY -> game?.let { g ->
-                renderer?.draw(cv, g, ui, hint, hintAlphaNow(), hintInfo.isNotEmpty())
+                renderer?.draw(cv, g, ui, hint, ui.clock - hintAt, hintInfo.isNotEmpty())
                 if (g.state != State.PLAY) { screens?.end(cv, g, ui, reward, current == LEVEL_COUNT, stars); renderer?.confetti(cv, g) }
                 if (paused) screens?.pause(cv, ui)
                 if (infoOpen) screens?.info(cv, ui)
