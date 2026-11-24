@@ -18,7 +18,7 @@ class Advice(val kind: Int, val col: Int = -1) {
 object Hints {
     /** Живая партия → модель (доска + состояние). Шарики в воронке и очереди считаются уже лежащими на ленте. */
     fun snapshot(g: Game): Pair<Board, PState> {
-        val cols = g.cols.map { col -> col.map { TrayDef(it.c, it.n, it.arrow) } }
+        val cols = g.cols.map { col -> col.map { TrayDef(it.c, it.n, it.arrow, it.pid) } }
         val stacks = ArrayList<IntArray>(SLOTS)
         val actN = IntArray(SLOTS)
         for (i in 0 until SLOTS) {

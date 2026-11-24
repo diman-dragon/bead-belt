@@ -1,12 +1,17 @@
 package dev.beadbelt.game
 
+import kotlin.math.abs
 import kotlin.math.min
 
 /**
- * Лоток: n шариков цвета c. arrow: 0 нет, 1 влево, 2 вправо, 3 в обе стороны.
- * До уровня 200 используются только односторонние связи; двусторонняя связь — механика поздней главы.
+ * Лоток: n шариков цвета c.
+ *
+ * Связь двух лотков — это ПАРА, а не «стрелка на лотке»: у обоих лотков один и тот же `pid` (> 0).
+ * Ведущий лоток несёт стрелку (`arrow` = [Links.LEFT] или [Links.RIGHT] — туда, где стоит ведомый),
+ * у ведомого `arrow` = 0. Связь работает только в одну сторону: тап по ведущему высыпает и ведомого
+ * (если тот сейчас впереди своей колонки), тап по ведомому высыпает только его самого.
  */
-class TrayDef(val c: Int, val n: Int, val arrow: Int = 0)
+class TrayDef(val c: Int, val n: Int, val arrow: Int = 0, val pid: Int = 0)
 
 /** elevator — индекс стопки коробок «на лифте»: первая коробка закрыта замком, пока не соберётся любая другая. */
 class Level(val id: Int, val columns: List<List<TrayDef>>, val boxes: List<Int>, val belt: Int, val elevator: Int = -1)
@@ -15,6 +20,28 @@ const val LEVEL_COUNT = 500
 const val BOX = 3          // шариков в коробке
 const val SLOTS = 4        // активных коробок
 const val COLOR_COUNT = 8
+
+/**
+ * Единственное место, где записано правило связи. Им пользуются игра, модель-решатель и отрисовка,
+ * поэтому они не могут разойтись.
+ */
+object Links {
+    const val LEFT = 1
+    const val RIGHT = 2
+
+    /**
+     * Колонка ведомого лотка, который запустится вместе с ведущим лотком (стрелка `arrow`, пара `pid`),
+     * стоящим в колонке `col`; -1 — запускается только сам лоток.
+     * `headPid(колонка)` — pid переднего лотка колонки или 0, если колонка пуста или лоток ни с кем не связан.
+     * Ведомый должен стоять впереди своей колонки именно сейчас; у ведомого стрелки нет, обратного хода нет.
+     */
+    inline fun follower(arrow: Int, pid: Int, col: Int, cols: Int, headPid: (Int) -> Int): Int {
+        if (pid == 0) return -1
+        val to = when (arrow) { LEFT -> col - 1; RIGHT -> col + 1; else -> return -1 }
+        if (to < 0 || to >= cols) return -1
+        return if (headPid(to) == pid) to else -1
+    }
+}
 
 /** mulberry32: одинаковая последовательность на любом устройстве. */
 class Rng(seed: Int) {
@@ -28,136 +55,207 @@ class Rng(seed: Int) {
     fun nextInt(n: Int) = (next() * n).toInt()
 }
 
+/** Параметры уровня: всё, что отличает один уровень от другого, кроме случайной раскладки. */
+class Spec(
+    val colors: Int, val perColor: Int, val cols: Int,
+    /** Сколько пар связанных лотков. */
+    val pairs: Int,
+    /** Пары только из лотков одного цвета (учебные связи). */
+    val sameOnly: Boolean,
+    /** Первая пара стоит впереди обеих колонок с самого начала. */
+    val headFirst: Boolean,
+    val lift: Boolean,
+    /** Наибольший «обычный» размер лотка (3..6). */
+    val sizeHi: Int,
+)
+
 object Levels {
+    /**
+     * Прогрессия, заново с нуля:
+     *  1–40    вводные: 3→6 цветов, по 2–3 коробки на цвет, без связей и лифта;
+     *  41–120  связи (одна пара, потом две) и лифт, 6–7 цветов, по 3–4 коробки;
+     *  121–200 8 цветов, по 4 коробки, две пары, лифт на каждом втором;
+     *  201–330 по 5 коробок на цвет, 2–3 пары;
+     *  331–500 по 6 коробок на цвет, 3–4 пары.
+     * Связи везде односторонние: ведущий → ведомый.
+     */
+    fun spec(id: Int): Spec {
+        val colors = when { id <= 40 -> 3 + (id - 1) / 10; id <= 80 -> 6; id <= 120 -> 7; else -> COLOR_COUNT }
+        val perColor = when { id <= 10 -> 2; id <= 80 -> 3; id <= 200 -> 4; id <= 330 -> 5; else -> 6 }
+        val pairs = when {
+            id <= 40 -> 0
+            id <= 80 -> 1
+            id <= 120 -> 1 + (id - 81) / 20
+            id <= 200 -> 2
+            id <= 330 -> 2 + (id - 201) / 65
+            else -> 3 + (id - 331) / 85
+        }
+        val lift = when { id < 60 -> false; id <= 120 -> id % 3 == 0; else -> id % 2 == 0 }
+        val sizeHi = when { id <= 20 -> 4; id <= 80 -> 5; else -> 6 }
+        return Spec(colors, perColor, if (id <= 5) 3 else 4, pairs, id <= 60, id in 41..60, lift, sizeHi)
+    }
+
     fun stacksOf(boxes: List<Int>): List<ArrayDeque<Int>> {
         val st = List(SLOTS) { ArrayDeque<Int>() }
         boxes.forEachIndexed { i, c -> st[i % SLOTS].addLast(c) }
         return st
     }
 
-    /** Лотки, которые запускает тап по колонке `col` (сам лоток + соседи по стрелкам). Лотки снимаются из колонок. */
-    fun takeBatch(cols: List<MutableList<TrayDef>>, col: Int): List<TrayDef> {
-        val first = cols[col].removeAt(0)
-        val batch = arrayListOf(first)
-        if (first.arrow and 1 != 0 && col > 0 && cols[col - 1].isNotEmpty()) batch.add(cols[col - 1].removeAt(0))
-        if (first.arrow and 2 != 0 && col < cols.size - 1 && cols[col + 1].isNotEmpty()) batch.add(cols[col + 1].removeAt(0))
-        return batch
+    /** Делит `total` шариков одного цвета на лотки по 3..6 (ни одного лотка меньше трёх). */
+    private fun split(total: Int, hi: Int, r: Rng): List<Int> {
+        val out = ArrayList<Int>()
+        var rem = total
+        while (rem > 0) {
+            var n = minOf(rem, 3 + r.nextInt(hi - 2))
+            if (rem - n in 1..2) n = if (rem - 3 >= 3) rem - 3 else rem
+            out.add(n); rem -= n
+        }
+        return out
+    }
+
+    private fun <T> shuffle(a: MutableList<T>, r: Rng) {
+        for (i in a.size - 1 downTo 1) { val j = r.nextInt(i + 1); val t = a[i]; a[i] = a[j]; a[j] = t }
     }
 
     /**
-     * Генератор v2 для всех 500 уровней. До 200-го уровня стрелки связывают ведущий и ведомый лотки
-     * только в одном направлении; с 201-го уровня допустима двусторонняя связь.
+     * Расставляет `spec.pairs` связанных пар в соседних колонках. Ведущим становится случайный лоток пары;
+     * стрелка ведущего смотрит на ведомого. Каждый лоток входит не более чем в одну пару.
      */
-    fun layout(id: Int, attempt: Int, belt: Int = 30): Level {
-        val r = Rng(id * 7919 + attempt * 104729 + 13)
-        // Новая прогрессия: 1–100 — вводные уровни; 101–200 — 8 цветов и лифт; 201–500 — двусторонние связи.
-        val hard = id > 100
-        val k = if (hard) COLOR_COUNT else min(3 + (id - 1) / 2, COLOR_COUNT)
-        val m = when {
-            id > 350 -> 6
-            id > 200 -> 5
-            hard -> 4 + (id - 101) / 50
-            else -> min(2 + id / 6, 4)
+    private fun placePairs(cols: List<MutableList<TrayDef>>, spec: Spec, r: Rng) {
+        val used = HashSet<Int>()
+        fun key(ci: Int, ti: Int) = ci * 1000 + ti
+        fun link(ci: Int, ti: Int, cj: Int, tj: Int, pid: Int) {
+            val a = cols[ci][ti]; val b = cols[cj][tj]
+            val leadIsA = r.nextInt(2) == 0
+            val dirA = if (cj > ci) Links.RIGHT else Links.LEFT
+            val dirB = if (ci > cj) Links.RIGHT else Links.LEFT
+            cols[ci][ti] = TrayDef(a.c, a.n, if (leadIsA) dirA else 0, pid)
+            cols[cj][tj] = TrayDef(b.c, b.n, if (leadIsA) 0 else dirB, pid)
+            used.add(key(ci, ti)); used.add(key(cj, tj))
         }
-        val nCols = if (id < 3) 3 else 4
-        val trays = ArrayList<TrayDef>()
-        val boxes = ArrayList<Int>()
-        for (c in 0 until k) {
-            repeat(m) { boxes.add(c) }
-            var rem = m * BOX
-            while (rem > 0) {
-                var n = minOf(rem, 3 + r.nextInt(4))
-                if (rem - n in 1..2) n = rem
-                trays.add(TrayDef(c, n)); rem -= n
-            }
-        }
-        fun <T> shuffle(a: MutableList<T>) {
-            for (i in a.size - 1 downTo 1) { val j = r.nextInt(i + 1); val t = a[i]; a[i] = a[j]; a[j] = t }
-        }
-        shuffle(trays); shuffle(boxes)
-        val raw = List(nCols) { ArrayList<TrayDef>() }
-        trays.forEachIndexed { i, t -> raw[i % nCols].add(t) }
-
-        // Односторонние учебные связи с 8-го уровня; двусторонние связи доступны после 200-го.
-        // Лифт появляется с 15-го уровня.
-        val pArrow = when {
-            id > 200 -> min(0.5 + (id - 200) / 1500.0, 0.7)
-            else -> 0.0
-        }
-        val columns = raw.mapIndexed { ci, col ->
-            col.mapIndexed { ti, t ->
-                var arrow = 0
-                if (r.next() < pArrow) {
-                    val opts = ArrayList<Int>()
-                    if (ci > 0) opts.add(1)
-                    if (ci < nCols - 1) opts.add(2)
-                    if (id > 200 && ci > 0 && ci < nCols - 1) opts.add(3)
-                    arrow = opts[r.nextInt(opts.size)]
+        val depth = if (spec.sameOnly) 4 else 6
+        for (pid in 1..spec.pairs) {
+            if (pid == 1 && spec.headFirst) {
+                // учебная пара: два лотка одного цвета впереди соседних колонок (недостающий подтягиваем вперёд)
+                val order = (0 until cols.size - 1).toMutableList(); shuffle(order, r)
+                var done = false
+                for (ci in order) {
+                    val want = cols[ci][0].c
+                    val tj = cols[ci + 1].indexOfFirst { it.c == want }
+                    if (tj < 0) continue
+                    val t = cols[ci + 1][0]; cols[ci + 1][0] = cols[ci + 1][tj]; cols[ci + 1][tj] = t
+                    link(ci, 0, ci + 1, 0, pid); done = true; break
                 }
-                // В первой главе связка только односторонняя и связывает лотки одного цвета:
-                // так стрелка обучает механике, а не создаёт случайную ловушку.
-                if (id in 8..200 && ti == 0) {
-                    arrow = when {
-                        ci < nCols - 1 && raw[ci + 1].firstOrNull()?.c == t.c -> 2
-                        ci > 0 && raw[ci - 1].firstOrNull()?.c == t.c -> 1
-                        else -> 0
+                if (done) continue
+            }
+            val wantSame = spec.sameOnly || r.next() < 0.4
+            fun candidates(sameRequired: Boolean?): ArrayList<IntArray> {
+                val out = ArrayList<IntArray>()
+                for (ci in 0 until cols.size - 1) for (ti in 0 until min(depth, cols[ci].size)) for (tj in 0 until min(depth, cols[ci + 1].size)) {
+                    if (abs(ti - tj) > 2 || key(ci, ti) in used || key(ci + 1, tj) in used) continue
+                    if (sameRequired != null && (cols[ci][ti].c == cols[ci + 1][tj].c) != sameRequired) continue
+                    out.add(intArrayOf(ci, ti, tj))
+                }
+                return out
+            }
+            var cand = candidates(wantSame)
+            if (cand.isEmpty() && !spec.sameOnly) cand = candidates(null)
+            if (cand.isEmpty() && spec.sameOnly) {
+                // подходящего соседа нет: подтягиваем лоток нужного цвета из другой колонки на место рядом
+                val order = (0 until cols.size - 1).toMutableList(); shuffle(order, r)
+                search@ for (ci in order) for (ti in 0 until min(depth, cols[ci].size)) {
+                    if (key(ci, ti) in used) continue
+                    val want = cols[ci][ti].c
+                    for (tj in maxOf(0, ti - 2)..min(ti + 2, min(depth, cols[ci + 1].size) - 1)) {
+                        if (key(ci + 1, tj) in used) continue
+                        for (ck in cols.indices) for (tk in cols[ck].indices) {
+                            if (ck == ci || key(ck, tk) in used || cols[ck][tk].c != want || (ck == ci + 1 && tk == tj)) continue
+                            val t = cols[ci + 1][tj]; cols[ci + 1][tj] = cols[ck][tk]; cols[ck][tk] = t
+                            cand = arrayListOf(intArrayOf(ci, ti, tj)); break@search
+                        }
                     }
                 }
-                if (arrow == 0) t else TrayDef(t.c, t.n, arrow)
             }
+            if (cand.isEmpty()) break
+            val p = cand[r.nextInt(cand.size)]
+            link(p[0], p[1], p[0] + 1, p[2], pid)
         }
-        val elevator = if (id >= 15 && id % (if (hard) 2 else 3) == 0) r.nextInt(SLOTS) else -1
-        // Версия v2 меняет палитру каждого уровня, включая 1–100. Это биективная перестановка
-        // цветов: структура задачи и баланс сохраняются, но прежние визуальные раскладки не повторяются.
-        val colorShift = id % (k - 1) + 1
-        val remappedColumns = columns.map { col -> col.map { t -> TrayDef((t.c + colorShift) % k, t.n, t.arrow) } }
-        val remappedBoxes = boxes.map { (it + colorShift) % k }
-        return Level(id, remappedColumns, remappedBoxes, belt, elevator)
     }
 
     /**
-     * Номер попытки, выбранной при проверке конкретной раскладки. Все уровни используют генератор v2.
+     * Раскладка уровня `id`. `attempt` — номер варианта (генерируются разные, подходящий выбран проверкой),
+     * `belt` — вместимость ленты.
      */
-    private val ATTEMPT = mapOf(65 to 1, 68 to 1, 69 to 1, 85 to 1, 88 to 1, 91 to 1, 122 to 1, 131 to 1, 149 to 1, 151 to 1, 152 to 1, 165 to 1, 175 to 1, 192 to 1, 195 to 1,
-        // 201–500
-        202 to 5, 206 to 1, 210 to 3, 211 to 5, 215 to 1, 218 to 7, 219 to 7, 220 to 4, 226 to 9, 230 to 1, 239 to 3, 241 to 4, 242 to 7, 244 to 9, 246 to 1, 247 to 6, 248 to 6, 252 to 1, 254 to 1, 256 to 3, 257 to 3, 259 to 2, 267 to 2, 275 to 1, 279 to 6, 282 to 2, 283 to 1, 287 to 6, 292 to 1, 294 to 2, 296 to 1, 300 to 5, 303 to 1, 304 to 5, 308 to 1, 309 to 1, 313 to 4, 321 to 4, 323 to 1, 330 to 1, 333 to 1, 337 to 1, 346 to 2, 350 to 2, 351 to 7, 352 to 9, 358 to 2, 361 to 4, 362 to 3, 364 to 6, 367 to 1, 369 to 1, 370 to 1, 373 to 1, 375 to 1, 376 to 2, 377 to 8, 381 to 1, 383 to 8, 384 to 1, 388 to 2, 389 to 3, 390 to 2, 391 to 1, 394 to 9, 395 to 9, 398 to 2, 400 to 7, 401 to 1, 402 to 2, 403 to 1, 404 to 7, 406 to 4, 410 to 2, 412 to 5, 414 to 3, 417 to 3, 418 to 3, 423 to 6, 424 to 2, 426 to 1, 427 to 1, 428 to 1, 429 to 2, 432 to 8, 433 to 1, 436 to 5, 438 to 3, 440 to 1, 441 to 1, 442 to 1, 444 to 1, 446 to 5, 448 to 2, 450 to 7, 451 to 2, 452 to 1, 453 to 2, 457 to 9, 460 to 6, 461 to 8, 463 to 1, 464 to 2, 465 to 4, 466 to 6, 467 to 1, 468 to 3, 469 to 6, 470 to 1, 473 to 3, 474 to 8, 475 to 8, 476 to 8, 477 to 6, 478 to 8, 481 to 2, 482 to 1, 483 to 2, 484 to 2, 485 to 1, 487 to 5, 489 to 3, 490 to 1, 497 to 1, 498 to 5, 499 to 6)
+    fun layout(id: Int, attempt: Int, belt: Int = 30): Level {
+        val r = Rng(id * 15485863 + attempt * 32452843 + 2027)
+        val s = spec(id)
+        val trays = ArrayList<TrayDef>()
+        val boxes = ArrayList<Int>()
+        for (c in 0 until s.colors) {
+            repeat(s.perColor) { boxes.add(c) }
+            for (n in split(s.perColor * BOX, s.sizeHi, r)) trays.add(TrayDef(c, n))
+        }
+        shuffle(trays, r); shuffle(boxes, r)
+        // первые четыре коробки — по возможности разных цветов
+        for (i in 1 until min(SLOTS, s.colors)) {
+            if (boxes.subList(0, i).contains(boxes[i])) {
+                val j = (i + 1 until boxes.size).firstOrNull { !boxes.subList(0, i).contains(boxes[it]) } ?: continue
+                val t = boxes[i]; boxes[i] = boxes[j]; boxes[j] = t
+            }
+        }
+        val cols = List(s.cols) { ArrayList<TrayDef>() }
+        trays.forEachIndexed { i, t -> cols[i % s.cols].add(t) }
+        placePairs(cols, s, r)
+
+        // свой набор цветов палитры на каждый уровень: цвета перемешаны, структура задачи не меняется
+        val palette = (0 until COLOR_COUNT).toMutableList(); shuffle(palette, r)
+        fun tint(t: TrayDef) = TrayDef(palette[t.c], t.n, t.arrow, t.pid)
+        val elevator = if (s.lift) r.nextInt(SLOTS) else -1
+        return Level(id, cols.map { col -> col.map(::tint) }, boxes.map { palette[it] }, belt, elevator)
+    }
+
+    /** Номер варианта раскладки, выбранный проверкой (по умолчанию 0). */
+    private val ATTEMPT = mapOf<Int, Int>(
+        // ATTEMPT-BEGIN
+        45 to 1, 53 to 2, 57 to 1,
+        // ATTEMPT-END
+    )
 
     /**
-     * Вместимость ленты каждого уровня (индекс = номер − 1). Подобрана статистически: игрок, который после каждого
-     * хода слушается подсказки, выигрывает не реже 28 раз из 30 на разных раскладках физики воронки (запас +2 уже внутри).
+     * Вместимость ленты каждого уровня (индекс = номер − 1). Подобрана статистикой: игрок, который после каждого
+     * хода слушается подсказки, выигрывает не реже 28 раз из 30 на разных раскладках физики воронки.
      * Игра непредсказуема по замыслу (шарики перемешиваются в воронке), поэтому доказать проходимость нельзя —
      * её проверяют на многих раскладках. Пересчёт: tools/README.md.
      */
     private val BELTS = intArrayOf(
-        13, 13, 13, 13, 13, 13, 13, 13, 13, 15, 25, 25, 21, 18, 26, 17, 15, 21, 19, 21,
-        17, 25, 22, 21, 19, 17, 14, 21, 20, 15, 15, 19, 18, 26, 20, 23, 22, 19, 16, 20,
-        22, 17, 28, 14, 17, 21, 24, 18, 30, 25, 19, 16, 12, 14, 17, 16, 24, 16, 18, 19,
-        16, 16, 13, 16, 16, 21, 21, 21, 14, 24, 15, 18, 23, 18, 13, 18, 14, 13, 22, 13,
-        19, 16, 28, 18, 12, 17, 30, 24, 22, 18, 13, 22, 10, 22, 23, 22, 25, 27, 17, 19,
-        28, 21, 16, 12, 19, 17, 24, 10, 14, 19, 16, 12, 19, 23, 19, 25, 24, 24, 24, 15,
-        17, 19, 16, 15, 26, 18, 12, 20, 12, 23, 21, 14, 16, 15, 17, 15, 19, 23, 20, 20,
-        17, 20, 30, 24, 15, 15, 14, 22, 16, 12, 15, 20, 22, 19, 18, 28, 26, 18, 19, 16,
-        22, 15, 24, 23, 23, 22, 30, 25, 20, 21, 27, 22, 23, 17, 25, 23, 21, 26, 30, 26,
-        24, 28, 17, 24, 18, 30, 24, 27, 29, 21, 21, 20, 25, 20, 22, 28, 19, 30, 21, 24,
-        21, 17, 13, 15, 28, 15, 19, 26, 18, 15, 17, 17, 23, 18, 23, 23, 20, 16, 16, 17,
-        24, 16, 20, 18, 16, 12, 19, 26, 15, 20, 15, 27, 23, 21, 17, 23, 16, 29, 16, 24,
-        18, 24, 20, 21, 24, 18, 20, 18, 25, 26, 18, 26, 19, 21, 27, 12, 11, 25, 20, 26,
-        18, 21, 25, 23, 25, 21, 19, 27, 26, 22, 26, 19, 18, 21, 24, 25, 19, 24, 15, 20,
-        21, 23, 14, 25, 22, 16, 17, 15, 14, 23, 20, 24, 20, 22, 27, 20, 23, 17, 24, 20,
-        13, 25, 23, 15, 19, 24, 20, 21, 18, 17, 24, 25, 19, 23, 25, 20, 19, 21, 22, 23,
-        17, 23, 21, 26, 21, 24, 24, 23, 19, 20, 22, 18, 26, 23, 16, 22, 14, 14, 23, 28,
-        25, 12, 19, 24, 24, 12, 20, 15, 27, 20, 18, 21, 27, 18, 22, 24, 20, 16, 15, 28,
-        22, 27, 21, 19, 28, 29, 25, 17, 22, 28, 23, 23, 21, 27, 23, 18, 19, 23, 21, 22,
-        22, 24, 17, 27, 26, 22, 25, 20, 17, 20, 19, 21, 17, 24, 18, 27, 24, 18, 23, 15,
-        24, 18, 24, 24, 27, 18, 26, 20, 19, 19, 26, 21, 25, 17, 19, 28, 20, 22, 24, 20,
-        22, 21, 18, 19, 21, 15, 28, 26, 20, 22, 18, 17, 24, 18, 19, 22, 26, 20, 28, 19,
-        25, 22, 18, 17, 17, 23, 28, 16, 26, 23, 23, 26, 22, 27, 21, 23, 26, 27, 23, 22,
-        21, 28, 20, 22, 21, 19, 28, 25, 18, 23, 26, 26, 21, 18, 29, 21, 19, 20, 25, 27,
-        27, 24, 25, 27, 28, 23, 24, 27, 26, 23, 20, 25, 23, 25, 24, 28, 21, 23, 19, 22,
+        // BELTS-BEGIN
+        14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
+        14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
+        15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 16, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+        15, 15, 15, 15, 15, 15, 16, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+        15, 15, 15, 16, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 16,
+        15, 15, 16, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 16, 15, 15,
+        14, 14, 14, 17, 17, 19, 14, 14, 14, 14, 23, 14, 14, 17, 14, 14, 24, 14, 14, 14,
+        14, 16, 14, 17, 17, 16, 17, 18, 14, 14, 14, 16, 23, 16, 14, 19, 14, 14, 14, 14,
+        14, 14, 20, 14, 14, 14, 14, 14, 19, 16, 17, 14, 14, 14, 18, 24, 14, 14, 17, 17,
+        17, 14, 14, 15, 14, 14, 14, 14, 14, 22, 18, 16, 14, 17, 14, 23, 14, 24, 17, 19,
+        16, 25, 16, 23, 18, 18, 17, 15, 22, 14, 23, 21, 14, 17, 22, 16, 22, 16, 16, 18,
+        18, 26, 17, 26, 20, 15, 24, 15, 14, 19, 19, 17, 18, 21, 14, 21, 21, 19, 17, 22,
+        16, 15, 18, 15, 16, 21, 15, 20, 22, 22, 14, 15, 22, 17, 14, 15, 18, 15, 22, 14,
+        17, 14, 14, 20, 20, 28, 18, 14, 21, 16, 17, 18, 14, 18, 14, 16, 15, 24, 19, 14,
+        16, 19, 17, 20, 19, 17, 20, 23, 19, 18, 19, 15, 14, 19, 19, 21, 20, 19, 18, 17,
+        24, 17, 23, 18, 19, 24, 17, 14, 14, 15, 19, 17, 16, 16, 15, 16, 14, 14, 17, 20,
+        23, 18, 23, 20, 19, 18, 23, 19, 14, 16, 19, 16, 17, 18, 17, 20, 24, 18, 30, 20,
+        30, 20, 14, 19, 14, 20, 16, 21, 17, 14, 18, 20, 21, 14, 16, 27, 17, 30, 14, 22,
+        20, 17, 17, 16, 17, 17, 20, 21, 24, 20, 18, 14, 16, 20, 18, 14, 20, 22, 15, 21,
+        22, 22, 21, 17, 22, 14, 21, 18, 20, 16, 26, 25, 26, 23, 26, 20, 19, 14, 20, 14,
+        22, 24, 18, 21, 26, 17, 20, 21, 15, 15, 16, 17, 14, 16, 16, 19, 17, 17, 19, 14,
+        19, 19, 14, 19, 17, 14, 19, 20, 16, 22, 14, 17, 21, 20, 24, 18, 17, 18, 21, 20,
+        19, 26, 21, 27, 16, 21, 15, 26, 15, 20, 26, 20, 17, 25, 17, 21, 22, 21, 19, 18,
+        28, 14, 16, 19, 21, 20, 18, 19, 21, 26, 17, 17, 14, 20, 15, 21, 21, 18, 17, 16,
+        26, 21, 16, 14, 17, 17, 18, 14, 20, 19, 18, 17, 15, 15, 19, 19, 30, 23, 15, 26,
+        // BELTS-END
     )
-
-    /** Запас вместимости ленты сверх найденного минимума. */
-    const val BELT_SLACK = 2
 
     fun make(id: Int): Level {
         val i = id.coerceIn(1, LEVEL_COUNT)

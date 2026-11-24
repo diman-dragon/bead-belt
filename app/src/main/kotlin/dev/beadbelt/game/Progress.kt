@@ -40,7 +40,7 @@ class Progress(context: Context) {
             context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
     }
 
-    private val prefs = context.getSharedPreferences("bead_v2_fresh_start", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("bead_v3_fresh_start", Context.MODE_PRIVATE)
 
     var unlocked = prefs.getInt("unlocked", 1).coerceIn(1, LEVEL_COUNT); private set
     var coins = prefs.getInt("coins", 100); private set

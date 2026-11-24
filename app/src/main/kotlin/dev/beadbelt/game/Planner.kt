@@ -75,19 +75,19 @@ object Planner {
     }
 
     /** Тап по колонке `col`: лотки, которые он запускает (сам лоток + соседи по стрелкам), и новые головы колонок. */
-    private fun batchOf(b: Board, s: PState, col: Int, heads: IntArray): List<TrayDef>? {
+    fun launch(b: Board, heads: IntArray, col: Int): List<TrayDef>? {
         if (heads[col] >= b.cols[col].size) return null
         val first = b.cols[col][heads[col]]; heads[col]++
         val batch = arrayListOf(first)
-        if (first.arrow and 1 != 0 && col > 0 && heads[col - 1] < b.cols[col - 1].size) { batch.add(b.cols[col - 1][heads[col - 1]]); heads[col - 1]++ }
-        if (first.arrow and 2 != 0 && col < b.cols.size - 1 && heads[col + 1] < b.cols[col + 1].size) { batch.add(b.cols[col + 1][heads[col + 1]]); heads[col + 1]++ }
+        val to = Links.follower(first.arrow, first.pid, col, b.cols.size) { c -> b.cols[c].getOrNull(heads[c])?.pid ?: 0 }
+        if (to >= 0) { batch.add(b.cols[to][heads[to]]); heads[to]++ }
         return batch
     }
 
     /** Результат тапа по `col` или null, если ход невозможен или шарикам не хватает места на ленте. */
     fun tap(b: Board, s: PState, col: Int): PState? {
         val heads = s.heads.clone()
-        val batch = batchOf(b, s, col, heads) ?: return null
+        val batch = launch(b, heads, col) ?: return null
         val main = s.copy()
         System.arraycopy(heads, 0, main.heads, 0, heads.size)
         // шарики приходят по одному, в порядке лотков; подходящая коробка забирает их сразу

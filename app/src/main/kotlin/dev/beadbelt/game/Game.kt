@@ -5,7 +5,7 @@ import kotlin.math.atan2
 import kotlin.math.max
 import kotlin.math.min
 
-class Tray(val c: Int, n0: Int, val arrow: Int = 0) { var n = n0; var d = 0f }   // d — отображаемая глубина
+class Tray(val c: Int, n0: Int, val arrow: Int = 0, val pid: Int = 0) { var n = n0; var d = 0f }   // d — отображаемая глубина
 /**
  * Коробка. n — шарики внутри, res — летят прямо сейчас, slot — место (0..3).
  * Собранная коробка тут же уступает место следующей и дозавершается в списке [Game.popping].
@@ -35,7 +35,7 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
     }
 
     val cols: List<MutableList<Tray>> =
-        level.columns.map { col -> col.map { Tray(it.c, it.n, it.arrow) }.toMutableList() }
+        level.columns.map { col -> col.map { Tray(it.c, it.n, it.arrow, it.pid) }.toMutableList() }
     val colX = FloatArray(cols.size) { 180f + (it - (cols.size - 1) / 2f) * 84f }
     val boxX = FloatArray(SLOTS) { 54f + 84f * it }
     /** Очереди коробок по местам: вторая и далее (первая стоит в [boxes]). */
@@ -96,13 +96,14 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
 
     // ---------- ввод ----------
 
-    /** Тап по колонке: лоток высыпается; если на нём стрелки — запускаются и соседние лотки. */
+    /** Тап по колонке: лоток высыпается; если он ведущий в паре и ведомый впереди своей колонки — высыпается и ведомый. */
     fun tapColumn(i: Int): Boolean {
         if (state != State.PLAY || i !in cols.indices || cols[i].isEmpty()) return false
         val first = cols[i].removeAt(0)
         release(first, colX[i])
-        if (first.arrow and 1 != 0 && i > 0 && cols[i - 1].isNotEmpty()) release(cols[i - 1].removeAt(0), colX[i - 1])
-        if (first.arrow and 2 != 0 && i < cols.size - 1 && cols[i + 1].isNotEmpty()) release(cols[i + 1].removeAt(0), colX[i + 1])
+        // связь строго от ведущего к ведомому; тап по ведомому запускает только его самого
+        val to = Links.follower(first.arrow, first.pid, i, cols.size) { c -> cols[c].firstOrNull()?.pid ?: 0 }
+        if (to >= 0) release(cols[to].removeAt(0), colX[to])
         onEvent(EV_TAP, 0)
         return true
     }

@@ -242,11 +242,10 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
 
     private inline fun eachLink(game: Game, f: (from: Int, to: Int, right: Boolean) -> Unit) {
         for (i in game.cols.indices) {
-            val col = game.cols[i]
-            if (col.isEmpty() || col[0].arrow == 0) continue
-            val arrow = col[0].arrow
-            if (arrow and 2 != 0 && i + 1 < game.cols.size && game.cols[i + 1].isNotEmpty()) f(i, i + 1, true)
-            if (arrow and 1 != 0 && i > 0 && game.cols[i - 1].isNotEmpty()) f(i, i - 1, false)
+            val lead = game.cols[i].firstOrNull() ?: continue
+            // та же функция, что решает, кого запустит тап: значок есть ровно там, где связь действует, и только от ведущего
+            val to = Links.follower(lead.arrow, lead.pid, i, game.cols.size) { c -> game.cols[c].firstOrNull()?.pid ?: 0 }
+            if (to >= 0) f(i, to, to > i)
         }
     }
 
