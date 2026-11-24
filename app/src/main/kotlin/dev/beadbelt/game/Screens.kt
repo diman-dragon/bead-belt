@@ -375,7 +375,12 @@ class Screens(private val g: Painter, private val progress: Progress, private va
     private var infoHead: List<String> = emptyList()
     private var infoBody: List<String> = emptyList()
 
-    fun prepareInfo(head: String, body: String) {
+    private var infoTag: String? = null
+    private var infoOk: String? = null
+
+    /** `tag` и `ok` — подпись над заголовком и текст кнопки; по умолчанию «Подсказка» и «Понятно». */
+    fun prepareInfo(head: String, body: String, tag: String? = null, ok: String? = null) {
+        infoTag = tag; infoOk = ok
         infoHead = g.wrap(head, 17f, Theme.fontBlack, 264f).take(3)
         infoBody = g.wrap(body, 14f, Theme.fontMedium, 264f).take(7)
     }
@@ -387,7 +392,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         val c = Layout.INFO_CARD
         cardFrame(cv, c)
         g.info(cv, 48f, 169f, 1.25f)
-        g.text(cv, tr("Подсказка", "Hint"), 66f, 175f, 13f, Theme.GOLD, Theme.fontBlack, Paint.Align.LEFT, shadow = false, spacing = 0.08f)
+        g.text(cv, infoTag ?: tr("Подсказка", "Hint"), 66f, 175f, 13f, Theme.GOLD, Theme.fontBlack, Paint.Align.LEFT, shadow = false, spacing = 0.08f)
         var y = 206f
         for (line in infoHead) { g.text(cv, line, 44f, y, 17f, Theme.WHITE, Theme.fontBlack, Paint.Align.LEFT, shadow = false); y += 22f }
         y += 2f
@@ -395,7 +400,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         y += 26f
         for (line in infoBody) { g.text(cv, line, 44f, y, 14f, Theme.alpha(Theme.WHITE, 225), Theme.fontMedium, Paint.Align.LEFT, shadow = false); y += 20f }
         val b = Layout.INFO_OK
-        g.button(cv, b[0], b[1], b[2], b[3], tr("Понятно", "Got it"), 0, ui.pr(BTN_INFO_OK))
+        g.button(cv, b[0], b[1], b[2], b[3], infoOk ?: tr("Понятно", "Got it"), 0, ui.pr(BTN_INFO_OK))
     }
 
     // ---------- уровни ----------
@@ -455,7 +460,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
 
     private fun easeOutBack(t: Float): Float { val c = 1.7f; val u = t - 1f; return 1f + (c + 1f) * u * u * u + c * u * u }
 
-    fun end(cv: Canvas, game: Game, ui: Ui, reward: Int, last: Boolean, stars: Int) {
+    fun end(cv: Canvas, game: Game, ui: Ui, reward: Int, last: Boolean, stars: Int, prize: String = "") {
         val a = ((ui.endT - 0.4f) / 0.35f).coerceIn(0f, 1f)
         if (a <= 0f) return
         val p = g.p
@@ -493,11 +498,16 @@ class Screens(private val g: Painter, private val progress: Progress, private va
             stars >= 3 -> tr("Чисто! Без подсказок", "Clean! No hints used")
             else -> tr("Уровень ${game.level.id} пройден", "Level ${game.level.id} complete")
         }
-        g.text(cv, sub, 180f, c[1] + 152f, 15f, Theme.alpha(Theme.WHITE, 200), Theme.fontMedium, shadow = false)
+        val hasPrize = won && prize.isNotEmpty()
+        g.text(cv, if (hasPrize) tr("Урок пройден!", "Lesson complete!") else sub, 180f, c[1] + (if (hasPrize) 148f else 152f), 15f, Theme.alpha(Theme.WHITE, 200), Theme.fontMedium, shadow = false)
+        if (hasPrize) {     // приз за урок: появляется после звёзд
+            val pa = ((ui.endT - 0.9f) / 0.3f).coerceIn(0f, 1f)
+            g.text(cv, prize, 180f, c[1] + 180f, if (prize.length > 22) 14f else 17f, Theme.alpha(Theme.GOLD, (255 * pa).toInt()), Theme.fontBlack, shadow = false)
+        }
         if (won) {      // награда «набегает»
             val shown = (reward * ((ui.endT - 0.8f) / 0.7f).coerceIn(0f, 1f)).toInt()
-            g.coin(cv, 150f, c[1] + 182f, 13f)
-            g.text(cv, "+$shown", 170f, c[1] + 190f, 24f, Theme.GOLD, align = Paint.Align.LEFT)
+            g.coin(cv, 150f, c[1] + (if (hasPrize) 207f else 182f), 13f)
+            g.text(cv, "+$shown", 170f, c[1] + (if (hasPrize) 215f else 190f), 24f, Theme.GOLD, align = Paint.Align.LEFT)
         }
         if (!won && progress.canRevive()) {
             val rv = Layout.END_REVIVE

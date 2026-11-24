@@ -3,11 +3,6 @@ package dev.beadbelt.game
 import android.content.Context
 import android.content.res.Configuration
 
-// виды платных помощников
-const val AID_ROCKET = 0
-const val AID_RETURN = 1
-const val AID_HINT = 2
-
 // разовые советы: каждый показывается один раз за всю игру
 const val TIP_TAP = 0
 const val TIP_ROCKET = 1
@@ -40,13 +35,13 @@ class Progress(context: Context) {
             context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
     }
 
-    private val prefs = context.getSharedPreferences("bead_v3_fresh_start", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("bead_v4_lessons", Context.MODE_PRIVATE)
 
     var unlocked = prefs.getInt("unlocked", 1).coerceIn(1, LEVEL_COUNT); private set
-    var coins = prefs.getInt("coins", 100); private set
-    var rockets = prefs.getInt("rockets", 2); private set
-    var returns = prefs.getInt("returns", 2); private set
-    var hints = prefs.getInt("hints", 3); private set
+    var coins = prefs.getInt("coins", 0); private set
+    var rockets = prefs.getInt("rockets", 0); private set
+    var returns = prefs.getInt("returns", 0); private set
+    var hints = prefs.getInt("hints", 0); private set
     var sound = prefs.getBoolean("sound", true)
         set(v) { field = v; prefs.edit().putBoolean("sound", v).apply() }
     /** Язык: 0 — как в системе, 1 — русский, 2 — английский. */
@@ -61,6 +56,7 @@ class Progress(context: Context) {
         for (i in s.indices) if (i < LEVEL_COUNT) arr[i + 1] = (s[i] - '0').coerceIn(0, 3)
     }
     private var tips = prefs.getInt("tips", 0)
+    private var lessons = prefs.getInt("lessons", 0)
     private var giftDay = prefs.getLong("giftDay", -1L)
     var giftStreak = prefs.getInt("giftStreak", 0); private set
 
@@ -100,6 +96,20 @@ class Progress(context: Context) {
     fun canRevive() = coins >= REVIVE_PRICE
     fun spendRevive() { coins -= REVIVE_PRICE; save() }
 
+    // ---------- уроки ----------
+
+    /** Урок пройден: его механика открыта, приз получен. */
+    fun lessonDone(id: Int) = lessons and (1 shl id) != 0
+
+    /** Урок пройден (победа на учебном уровне): отмечаем и выдаём приз. Повторно приз не выдаётся. */
+    fun completeLesson(id: Int) {
+        if (lessonDone(id)) return
+        val p = Lessons.all[id].prize
+        coins += p.coins; rockets += p.rockets; returns += p.returns; hints += p.hints
+        lessons = lessons or (1 shl id)
+        save()
+    }
+
     // ---------- разовые советы ----------
 
     fun tipSeen(id: Int) = tips and (1 shl id) != 0
@@ -128,6 +138,6 @@ class Progress(context: Context) {
         for (i in 1..LEVEL_COUNT) sb.append(('0' + stars[i]))
         prefs.edit().putInt("unlocked", unlocked).putInt("coins", coins)
             .putInt("rockets", rockets).putInt("returns", returns).putInt("hints", hints)
-            .putString("stars", sb.toString()).putLong("giftDay", giftDay).putInt("giftStreak", giftStreak).apply()
+            .putInt("lessons", lessons).putString("stars", sb.toString()).putLong("giftDay", giftDay).putInt("giftStreak", giftStreak).apply()
     }
 }

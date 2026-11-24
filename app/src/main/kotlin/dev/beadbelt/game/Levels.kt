@@ -259,10 +259,11 @@ object Levels {
 
     fun make(id: Int): Level {
         val i = id.coerceIn(1, LEVEL_COUNT)
-        return layout(i, ATTEMPT[i] ?: 0, BELTS[i - 1])
+        return layout(i, ATTEMPT[i] ?: 0, min(30, BELTS[i - 1] + if (Lessons.atLevel(i) != null) Lessons.BELT_BONUS else 0))
     }
 
     fun attemptOf(id: Int) = ATTEMPT[id] ?: 0
+    /** Вместимость ленты по таблице (без бонуса учебного уровня). */
     fun beltOf(id: Int) = BELTS[id - 1]
 }
 

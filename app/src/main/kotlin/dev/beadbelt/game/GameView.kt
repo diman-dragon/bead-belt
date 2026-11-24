@@ -14,7 +14,7 @@ import kotlin.math.min
 
 private const val BTN_BLOCK = -1     // нажатие поглощено (диалог, пауза), но действия нет
 private const val SPLASH_LEN = 3.1f     // сколько секунд длится заставка
-private const val VERSION_FALLBACK = "0.9.0"
+private const val VERSION_FALLBACK = "0.9.2"
 
 /**
  * Вид игры: цикл кадров, ввод и переходы между экранами.
@@ -48,6 +48,12 @@ class GameView(context: Context) : View(context) {
     private var idle = 0f              // сколько секунд игрок ничего не нажимал
     private var idleTipShown = false
     private var fullTipShown = false
+
+    // урок текущего уровня (null — обычный уровень или урок уже пройден)
+    private var lesson: Lesson? = null
+    private var lessonOk = false       // игрок уже сделал то, чему учит урок
+    private var freeUsed = 0           // бесплатные применения помощников на учебном уровне (не влияют на звёзды)
+    private var prizeText = ""         // приз за урок для итоговой карточки
 
     private var running = false
     private var lastNs = 0L
@@ -130,15 +136,68 @@ class GameView(context: Context) : View(context) {
         if (ui.hintT > 0f) { ui.hintT -= dt; if (ui.hintT <= 0f) ui.hintCol = -1 }
         idle += dt
         val quiet = hint.isEmpty() || ui.clock - hintAt > 6f
+        val ls = lesson
+        if (ls != null) { lessonTick(g, ls, quiet); return }        // на учебном уровне остальные советы молчат
         if (current <= 2 && idle > 3.5f && ui.hintCol < 0 && Hints.calm(g)) {   // самые первые уровни: сразу показываем пальцем
             val a = Hints.advise(g, 5_000)
             if (a.kind == Advice.TAP) point(a.col)
             idle = 0f
-        } else if (!idleTipShown && idle > 14f && quiet && current > 2) {
+        } else if (!idleTipShown && idle > 14f && quiet && progress.lessonDone(LS_BULB)) {
             idleTipShown = true; say(tr("Не знаешь, что нажать? Лампочка покажет ход", "Not sure what to tap? The bulb shows a move"), bulbInfo())
         }
         if (!fullTipShown && quiet && g.n - g.occupied <= 1) {
-            fullTipShown = true; say(tr("Лента почти полна! Поможет лампочка или «Вернуть»", "The belt is almost full! Try the bulb or Return"), fullInfo())
+            fullTipShown = true
+            if (progress.lessonDone(LS_RETURN)) say(tr("Лента почти полна! Поможет лампочка или «Вернуть»", "The belt is almost full! Try the bulb or Return"), fullInfo())
+            else say(tr("Лента почти полна! Сыпь только то, что нужно коробкам", "The belt is almost full! Pour only what the boxes need"), "")
+        }
+    }
+
+    // ---------- уроки ----------
+
+    /** Ведущий лоток действующей связи: колонка, на которую надо нажать, или -1. */
+    private fun linkLeader(g: Game): Int {
+        for (i in g.cols.indices) {
+            val h = g.cols[i].firstOrNull() ?: continue
+            if (Links.follower(h.arrow, h.pid, i, g.cols.size) { c -> g.cols[c].firstOrNull()?.pid ?: 0 } >= 0) return i
+        }
+        return -1
+    }
+
+    private fun traysLeft(g: Game): Int { var k = 0; for (c in g.cols) k += c.size; return k }
+
+    private fun openLesson(ls: Lesson) {
+        screens?.prepareInfo(LessonText.title(ls), LessonText.body(ls), LessonText.tag(), LessonText.ok(ls))
+        infoOpen = true
+    }
+
+    /** Урок усвоен: убираем подсветку и хвалим (silent — когда игра уже сказала своё). */
+    private fun lessonPassed(silent: Boolean = false) {
+        val ls = lesson ?: return
+        if (lessonOk) return
+        lessonOk = true; ui.focusAid = -1; ui.hintCol = -1
+        if (!silent) say(LessonText.praise(ls))
+    }
+
+    /** Игрок нажал на лоток: `launched` — сколько лотков высыпалось этим нажатием. */
+    private fun lessonTap(launched: Int) {
+        val ls = lesson ?: return
+        if (lessonOk) return
+        if (ls.id == LS_BASICS || (ls.id == LS_LINKS && launched >= 2)) lessonPassed()
+    }
+
+    /** Пока урок не усвоен: напоминает задание и показывает пальцем, что нажать. */
+    private fun lessonTick(g: Game, ls: Lesson, quiet: Boolean) {
+        if (ls.id == LS_LIFT && g.elevatorIsOpen) lessonPassed()
+        if (ls.id == LS_LINKS && !lessonOk && linkLeader(g) < 0) lessonPassed(silent = true)   // связи уже нет: нажать нечего
+        if (!lessonOk && quiet) say(LessonText.task(ls))
+        if (ui.hintCol >= 0 || !Hints.calm(g)) return
+        when (ls.id) {
+            LS_BASICS -> if (idle > (if (lessonOk) 3.5f else 1.2f)) {
+                val a = Hints.advise(g, 5_000)
+                if (a.kind == Advice.TAP) point(a.col)
+                idle = 0f
+            }
+            LS_LINKS -> if (!lessonOk && idle > 0.8f) { val c = linkLeader(g); if (c >= 0) point(c); idle = 0f }
         }
     }
 
@@ -148,8 +207,8 @@ class GameView(context: Context) : View(context) {
 
     // пояснения, которые открываются по значку «i» рядом с подсказкой
     private fun bulbInfo() = tr(
-        "Лампочка просчитывает партию и показывает, какой лоток нажать. Три подсказки бесплатные, потом по ${Progress.HINT_PRICE} монет. Подсказки и бустеры влияют на звёзды: без помощи их три.",
-        "The bulb analyzes the position and points to the tray to tap. Three hints are free, then ${Progress.HINT_PRICE} coins each. Hints and boosters affect stars: with no help you get three.")
+        "Лампочка просчитывает партию и показывает, какой лоток нажать. Подсказки бесплатны, пока они есть, потом по ${Progress.HINT_PRICE} монет. Подсказки и бустеры влияют на звёзды: без помощи их три.",
+        "The bulb analyzes the position and points to the tray to tap. Hints are free while you have them, then ${Progress.HINT_PRICE} coins each. Hints and boosters affect stars: with no help you get three.")
     private fun fullInfo() = tr(
         "Конвейер вмещает ограниченное число шариков. Если он забьётся и ни одна коробка не подойдёт, уровень проигран. «Вернуть» снимает до 8 шариков с ленты и возвращает их в лотки.",
         "The belt holds a limited number of beads. If it jams and no box matches, the level is lost. Return takes up to 8 beads off the belt and puts them back into trays.")
@@ -222,43 +281,29 @@ class GameView(context: Context) : View(context) {
         val lv = LevelCache.get(current)
         hint = ""; hintInfo = ""; infoOpen = false; hintAt = ui.clock; hintsUsed = 0; idle = 0f; idleTipShown = false; fullTipShown = false
         stars = 0; ui.hintCol = -1; ui.hintT = 0f
-        // разовый совет: показываем первый подходящий, который ещё не видели
-        val tip = when {
-            !progress.tipSeen(TIP_TAP) -> Triple(TIP_TAP,
-                tr("Нажми на лоток: шарики поедут по конвейеру", "Tap a tray: its beads will ride the belt"),
-                tr("Лотки стоят вверху. Нажми на лоток, и его шарики высыплются в воронку и покатятся на конвейер. Шарик сам залетит в коробку своего цвета, когда проедет мимо.",
-                    "The trays are at the top. Tap one and its beads drop into the funnel and roll onto the belt. A bead jumps into the box of its own color as it passes by."))
-            lv.columns.any { c -> c.any { it.arrow != 0 } } && !progress.tipSeen(TIP_ARROWS) -> Triple(TIP_ARROWS,
-                tr("Золотая стрелка между лотками: тап запустит оба", "Golden arrow between trays: one tap launches both"),
-                tr("Лотки в золотой рамке связаны стрелкой. Нажми на тот лоток, от которого стрелка идёт, и сосед высыплется вместе с ним.",
-                    "Trays in a golden frame are linked by an arrow. Tap the tray the arrow starts from and its neighbor empties together with it."))
-            lv.elevator >= 0 && !progress.tipSeen(TIP_LIFT) -> Triple(TIP_LIFT,
-                tr("Замок: коробка откроется после первой собранной", "Padlock: this box opens after the first one is full"),
-                tr("Коробка с замком пока не принимает шарики. Собери любую другую коробку, и замок откроется.",
-                    "A padlocked box does not accept beads yet. Fill any other box and the lock opens."))
-            current >= 3 && !progress.tipSeen(TIP_ROCKET) -> Triple(TIP_ROCKET,
-                tr("Ракета внизу мгновенно закрывает коробку", "The rocket below instantly fills a box"),
-                tr("Ракета сама выбирает самую выгодную коробку и убирает нужные шарики с поля. Первые две бесплатные, дальше она стоит ${Progress.ROCKET_PRICE} монет.",
-                    "The rocket picks the most useful box and removes the beads it needs from the board. The first two are free, then it costs ${Progress.ROCKET_PRICE} coins."))
-            current >= 4 && !progress.tipSeen(TIP_HINT) -> Triple(TIP_HINT,
-                tr("Застрял? Нажми лампочку, и она покажет лучший ход", "Stuck? Tap the bulb to see the best move"), bulbInfo())
-            else -> null
-        }
-        if (tip != null) { progress.markTip(tip.first); hint = tip.second; hintInfo = tip.third }
+        // урок: новая механика появляется на своём уровне (карточка, тренировка, приз)
+        lesson = Lessons.atLevel(current)?.takeIf { !progress.lessonDone(it.id) }
+        lessonOk = false; freeUsed = 0; prizeText = ""
+        ui.freeAid = lesson?.aid ?: -1; ui.focusAid = ui.freeAid
         game = Game(lv) { ev, arg ->
             sound.event(ev, arg)
             if (ev == EV_WIN || ev == EV_LOSE) performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             if (ev == EV_WIN) {
-                val usage = (game?.assists ?: 0) + hintsUsed
+                val usage = ((game?.assists ?: 0) + hintsUsed - freeUsed).coerceAtLeast(0)
                 stars = Progress.starsFor(usage)
                 reward = progress.win(current, usage)
+                lesson?.let { progress.completeLesson(it.id); prizeText = LessonText.prize(it) }
             }
         }
         LevelCache.prefetch(current + 1)
         go(Screen.PLAY)
+        lesson?.let { openLesson(it) }       // go() сбрасывает окна, поэтому открываем после перехода
     }
 
     // ---------- ввод ----------
+
+    /** Помощник открыт: урок пройден или это учебный уровень именно про него. */
+    private fun boosterOn(aid: Int) = ui.freeAid == aid || progress.lessonDone(Lessons.forAid(aid).id)
 
     private fun hit(x: Float, y: Float): Int {
         when (screen) {
@@ -313,9 +358,9 @@ class GameView(context: Context) : View(context) {
                     hintInfo.isNotEmpty() && hintAlphaNow() > 0.3f && renderer?.hintHit(x, y) == true -> BTN_INFO
                     Layout.inCircle(x, y, Layout.HUD_R_X, Layout.HUD_Y, Layout.HUD_R + 6f) -> BTN_RESTART
                     Layout.inCircle(x, y, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R + 6f) -> BTN_SOUND
-                    Layout.inCircle(x, y, ROCKET_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_ROCKET
-                    Layout.inCircle(x, y, Layout.HINT_BX, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_HINT
-                    Layout.inCircle(x, y, RETURN_X, BOOST_Y, Layout.BOOST_R + 6f) -> BTN_RETURN
+                    Layout.inCircle(x, y, ROCKET_X, BOOST_Y, Layout.BOOST_R + 6f) && boosterOn(AID_ROCKET) -> BTN_ROCKET
+                    Layout.inCircle(x, y, Layout.HINT_BX, BOOST_Y, Layout.BOOST_R + 6f) && boosterOn(AID_HINT) -> BTN_HINT
+                    Layout.inCircle(x, y, RETURN_X, BOOST_Y, Layout.BOOST_R + 6f) && boosterOn(AID_RETURN) -> BTN_RETURN
                     else -> BTN_NONE
                 }
             }
@@ -333,7 +378,13 @@ class GameView(context: Context) : View(context) {
                 val id = hit(x, y)
                 ui.pressId = if (id > 0) id else BTN_NONE; ui.press = 0f
                 // лотки реагируют сразу на касание — так отзывчивее, чем на отпускание
-                if (id == BTN_NONE && screen == Screen.PLAY && game?.tap(x, y + LIFT) == true) { idle = 0f; ui.hintCol = -1 }
+                if (id == BTN_NONE && screen == Screen.PLAY) {
+                    val g = game
+                    if (g != null) {
+                        val before = traysLeft(g)
+                        if (g.tap(x, y + LIFT)) { idle = 0f; ui.hintCol = -1; lessonTap(before - traysLeft(g)) }
+                    }
+                }
             }
             MotionEvent.ACTION_MOVE -> if (screen == Screen.LEVELS) {
                 val dy = e.y - downY
@@ -395,8 +446,12 @@ class GameView(context: Context) : View(context) {
     }
 
     private fun useBooster(aid: Int, g: Game) {
-        if (g.state != State.PLAY || !progress.canAfford(aid)) return
-        if (if (aid == AID_ROCKET) g.useRocket() else g.returnMarbles()) { progress.spend(aid); idle = 0f }
+        val free = ui.freeAid == aid                 // на учебном уровне помощник бесплатный и не портит звёзды
+        if (g.state != State.PLAY || !(free || progress.canAfford(aid))) return
+        if (if (aid == AID_ROCKET) g.useRocket() else g.returnMarbles()) {
+            idle = 0f
+            if (free) { freeUsed++; lessonPassed() } else progress.spend(aid)
+        }
     }
 
     /**
@@ -405,7 +460,8 @@ class GameView(context: Context) : View(context) {
      */
     private fun useHint(g: Game) {
         if (g.state != State.PLAY) return
-        if (!progress.canAfford(AID_HINT)) {
+        val free = ui.freeAid == AID_HINT
+        if (!free && !progress.canAfford(AID_HINT)) {
             say(tr("Не хватает монет на подсказку (${Progress.HINT_PRICE})", "Not enough coins for a hint (${Progress.HINT_PRICE})"),
                 tr("Подсказка стоит ${Progress.HINT_PRICE} монет, когда бесплатные закончились. Монеты дают за пройденные уровни и ежедневный подарок в меню.",
                     "A hint costs ${Progress.HINT_PRICE} coins once the free ones run out. Coins come from finished levels and the daily gift in the menu."))
@@ -414,7 +470,8 @@ class GameView(context: Context) : View(context) {
         val a = Hints.advise(g, 30_000)
         when (a.kind) {
             Advice.TAP, Advice.UNSURE -> {
-                progress.spend(AID_HINT); hintsUsed++; idle = 0f
+                if (free) lessonPassed(silent = true) else { progress.spend(AID_HINT); hintsUsed++ }
+                idle = 0f
                 point(a.col)
                 if (a.kind == Advice.TAP) say(tr("Нажми сюда: это ведёт к победе", "Tap here: this leads to a win"),
                     tr("Лампочка нашла ходы, которые приводят к победе из текущего положения. Выделенный лоток — первый в этой цепочке.",
@@ -446,7 +503,7 @@ class GameView(context: Context) : View(context) {
             Screen.HELP -> screens?.help(cv, ui)
             Screen.PLAY -> game?.let { g ->
                 renderer?.draw(cv, g, ui, hint, ui.clock - hintAt, hintInfo.isNotEmpty())
-                if (g.state != State.PLAY) { screens?.end(cv, g, ui, reward, current == LEVEL_COUNT, stars); renderer?.confetti(cv, g) }
+                if (g.state != State.PLAY) { screens?.end(cv, g, ui, reward, current == LEVEL_COUNT, stars, prizeText); renderer?.confetti(cv, g) }
                 if (paused) screens?.pause(cv, ui)
                 if (infoOpen) screens?.info(cv, ui)
             }

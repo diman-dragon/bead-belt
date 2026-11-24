@@ -398,7 +398,13 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
     }
 
     private fun booster(cv: Canvas, x: Float, aid: Int, game: Game, ui: Ui) {
-        val usable = game.state == State.PLAY && progress.canAfford(aid)
+        val free = ui.freeAid == aid                        // на учебном уровне помощник бесплатный
+        if (!free && !progress.lessonDone(Lessons.forAid(aid).id)) {      // ещё не открыт: тусклая кнопка с замком
+            g.roundButton(cv, x, BOOST_Y, Layout.BOOST_R, 0f, false)
+            g.lock(cv, x, BOOST_Y, 0.7f)
+            return
+        }
+        val usable = game.state == State.PLAY && (free || progress.canAfford(aid))
         val id = when (aid) { AID_ROCKET -> BTN_ROCKET; AID_RETURN -> BTN_RETURN; else -> BTN_HINT }
         g.roundButton(cv, x, BOOST_Y, Layout.BOOST_R, ui.pr(id), usable)
         cv.save(); cv.translate(x, BOOST_Y)
@@ -409,7 +415,13 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         }
         cv.restore()
         if (!usable) { g.p.style = Paint.Style.FILL; g.p.shader = null; g.p.color = Theme.alpha(0xFF0A1535.toInt(), 120); cv.drawCircle(x, BOOST_Y, Layout.BOOST_R, g.p) }
-        val have = progress.have(aid)
+        if (ui.focusAid == aid && game.state == State.PLAY) {   // урок указывает на эту кнопку
+            val pulse = 0.5f + 0.5f * sin(ui.clock * 6f)
+            g.p.style = Paint.Style.STROKE; g.p.shader = null; g.p.strokeWidth = 4f
+            g.p.color = Theme.alpha(Theme.pointer, (150 + 105 * pulse).toInt())
+            cv.drawCircle(x, BOOST_Y, Layout.BOOST_R + 5f + 3f * pulse, g.p)
+        }
+        val have = if (free) 1 else progress.have(aid)
         val label = if (have > 0) (when (aid) { AID_ROCKET -> rocketText; AID_RETURN -> returnText; else -> hintText }).of(have)
                     else when (aid) { AID_ROCKET -> ROCKET_LABEL; AID_RETURN -> RETURN_LABEL; else -> HINT_LABEL }
         g.p.style = Paint.Style.FILL; g.p.shader = null
