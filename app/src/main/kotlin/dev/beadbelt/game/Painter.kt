@@ -23,7 +23,7 @@ class NumText {
 }
 
 /** Рисовалка примитивов (текст, кнопки, значки, фон). Все кисти, шейдеры и пути переиспользуются. */
-class Painter(val a: Assets, val sw: Float, val sh: Float) {
+class Painter(val a: Assets, private val sw: Float, private val sh: Float) {
     val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bp = Paint(Paint.FILTER_BITMAP_FLAG)
     val rect = RectF()
@@ -364,6 +364,11 @@ class Painter(val a: Assets, val sw: Float, val sh: Float) {
         cv.drawBitmap(ic.bmp, null, rect, bp)
     }
 
+    private val icCross = bake(10f, 10f) { c ->
+        p.style = Paint.Style.STROKE; p.shader = null; p.color = Theme.WHITE; p.strokeWidth = 3.6f; p.strokeCap = Paint.Cap.ROUND
+        c.drawLine(-6f, -6f, 6f, 6f, p); c.drawLine(6f, -6f, -6f, 6f, p)
+        p.strokeCap = Paint.Cap.BUTT
+    }
     private val icGear = bake(15f, 15f) { vecGear(it) }
     private val icInfo = bake(11.5f, 11.5f) { vecInfo(it) }
     private val icSpeakerOn = bake(18f, 14f) { vecSpeaker(it, 0f, 0f, true) }
@@ -378,39 +383,42 @@ class Painter(val a: Assets, val sw: Float, val sh: Float) {
     private val icCoin = bake(18f, 18f) { vecCoin(it, 0f, 0f, 16f) }
     private val icRocket = bake(18f, 33f) { vecRocket(it, 1.3f, false) }
     private val icRocketFlame = bake(18f, 33f) { vecRocket(it, 1.3f, true) }
-    private val icLinkR = bake(18f, 16f) { vecLink(it, true) }
-    private val icLinkL = bake(18f, 16f) { vecLink(it, false) }
+    private val icLinkR = bake(12f, 19f) { vecLink(it, true) }
+    private val icLinkL = bake(12f, 19f) { vecLink(it, false) }
+    private val icArrowR = bake(8f, 8f) { c -> arrowShape(c, 6.5f) }
+    private val icArrowL = bake(8f, 8f) { c -> arrowShape(c, -6.5f) }
     private val icGlint = bake(10f, 10f) { c ->
         p.style = Paint.Style.FILL; p.shader = null; p.color = Theme.WHITE
         path.reset(); path.moveTo(0f, -10f); path.quadTo(0f, 0f, 10f, 0f); path.quadTo(0f, 0f, 0f, 10f); path.quadTo(0f, 0f, -10f, 0f); path.quadTo(0f, 0f, 0f, -10f)
         c.drawPath(path, p)
     }
 
-    /**
-     * Единственный значок связи между лотками: золотая «таблетка» с жирной стрелкой от ведущего лотка к ведомому.
-     * Рисуется одним и тем же компонентом для каждой пары, зеркально для левой и правой стороны.
-     */
+    /** Золотая скоба между связанными лотками со стрелкой в сторону, куда «передаётся» тап. */
     private fun vecLink(c: Canvas, right: Boolean) {
-        val d = if (right) 1f else -1f
         p.style = Paint.Style.FILL; p.shader = null
-        p.color = Theme.alpha(Theme.BLACK, 70); rect.set(-15f, -9f, 15f, 15f); c.drawRoundRect(rect, 12f, 12f, p)               // тень
-        p.color = 0xFF5A3A00.toInt(); rect.set(-15f, -12f, 15f, 12f); c.drawRoundRect(rect, 12f, 12f, p)                        // тёмный борт
-        p.shader = LinearGradient(0f, -10f, 0f, 10f, 0xFFFFE27A.toInt(), 0xFFF2A100.toInt(), Shader.TileMode.CLAMP)
-        rect.set(-13f, -10f, 13f, 10f); c.drawRoundRect(rect, 10f, 10f, p); p.shader = null                                      // золотая лицевая сторона
-        p.color = Theme.alpha(Theme.WHITE, 120); rect.set(-9.5f, -8.2f, 9.5f, -3f); c.drawRoundRect(rect, 3f, 3f, p)           // блик
-        p.style = Paint.Style.STROKE; p.strokeWidth = 3.6f; p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND; p.color = 0xFF5A3A00.toInt()
-        c.drawLine(-7f * d, 0f, 5.5f * d, 0f, p)
-        path.reset(); path.moveTo(0.5f * d, -5f); path.lineTo(7f * d, 0f); path.lineTo(0.5f * d, 5f); c.drawPath(path, p)
+        p.color = 0xFF9A6500.toInt(); rect.set(-10.5f, -15f, 10.5f, 18f); c.drawRoundRect(rect, 8f, 8f, p)
+        p.color = 0xFFFFC21F.toInt(); rect.set(-10.5f, -17f, 10.5f, 16f); c.drawRoundRect(rect, 8f, 8f, p)
+        p.color = Theme.alpha(Theme.WHITE, 110); rect.set(-7f, -14f, 7f, -4f); c.drawRoundRect(rect, 5f, 5f, p)
+        val d = if (right) 1f else -1f
+        p.style = Paint.Style.STROKE; p.strokeWidth = 3.6f; p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND; p.color = 0xFF6B4300.toInt()
+        path.reset(); path.moveTo(-3f * d, -7f); path.lineTo(3f * d, 0f); path.lineTo(-3f * d, 7f); c.drawPath(path, p)
         p.strokeCap = Paint.Cap.BUTT
+    }
+
+    private fun arrowShape(c: Canvas, dir: Float) {
+        p.style = Paint.Style.FILL; p.shader = null; p.color = Theme.WHITE
+        path.reset(); path.moveTo(dir, 0f); path.lineTo(-dir * 0.7f, -Math.abs(dir)); path.lineTo(-dir * 0.7f, Math.abs(dir)); path.close()
+        c.drawPath(path, p)
     }
 
     fun gear(cv: Canvas, x: Float, y: Float) = put(cv, icGear, x, y)
     fun info(cv: Canvas, x: Float, y: Float, sc: Float = 1f, alpha: Int = 255) = put(cv, icInfo, x, y, sc, alpha)
-    fun speaker(cv: Canvas, x: Float, y: Float, on: Boolean) = put(cv, if (on) icSpeakerOn else icSpeakerOff, x, y)
-    fun restart(cv: Canvas, x: Float, y: Float) = put(cv, icRestart, x, y)
+    fun cross(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icCross, x, y, sc)
+    fun speaker(cv: Canvas, x: Float, y: Float, on: Boolean, sc: Float = 1f) = put(cv, if (on) icSpeakerOn else icSpeakerOff, x, y, sc)
+    fun restart(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icRestart, x, y, sc)
     fun back(cv: Canvas, x: Float, y: Float) = put(cv, icBack, x, y)
     fun returnIcon(cv: Canvas) = put(cv, icReturn, 0f, 0f)
-    fun bulb(cv: Canvas, x: Float, y: Float, sc: Float = 1f, alpha: Int = 255) = put(cv, icBulb, x, y, sc, alpha)
+    fun bulb(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icBulb, x, y, sc)
     fun gift(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icGift, x, y, sc)
     fun lock(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icLock, x, y, sc)
     fun check(cv: Canvas, x: Float, y: Float, sc: Float, color: Int) = put(cv, icCheck, x, y, sc, color ushr 24)
@@ -424,7 +432,7 @@ class Painter(val a: Assets, val sw: Float, val sh: Float) {
         bp.alpha = 255
         cv.drawBitmap(a.pocket, null, rect, bp)
     }
-    /** Значок связи между двумя лотками (стрелка от ведущего к ведомому); (x, y) — его центр. */
-    fun linkBadge(cv: Canvas, x: Float, y: Float, right: Boolean, sc: Float, alpha: Int = 255) = put(cv, if (right) icLinkR else icLinkL, x, y, sc, alpha)
+    fun linkClamp(cv: Canvas, x: Float, y: Float, right: Boolean, sc: Float) = put(cv, if (right) icLinkR else icLinkL, x, y, sc)
+    fun arrow(cv: Canvas, x: Float, y: Float, left: Boolean, sc: Float, alpha: Int) = put(cv, if (left) icArrowL else icArrowR, x, y, sc, alpha)
     fun glint(cv: Canvas, x: Float, y: Float, arm: Float, alpha: Int) = put(cv, icGlint, x, y, arm / 10f, alpha)
 }

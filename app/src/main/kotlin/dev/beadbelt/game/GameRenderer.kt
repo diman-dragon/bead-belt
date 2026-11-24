@@ -16,6 +16,8 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         const val ROCKET_LABEL = "${Progress.ROCKET_PRICE}"
         const val RETURN_LABEL = "${Progress.RETURN_PRICE}"
         const val HINT_LABEL = "${Progress.HINT_PRICE}"
+        const val TS = 0.9f             // лотки чуть меньше: не касаются стенок воронки
+        const val SQ = 0.95f            // и ближе к центру
         const val FALL_T = 0.26f        // сколько шарик падает с горловины на ленту
     }
 
@@ -30,7 +32,7 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
     private var titleVer = -1
     private var title = ""
 
-    fun draw(cv: Canvas, game: Game, ui: Ui, hint: String, hintAge: Float, hasInfo: Boolean) {
+    fun draw(cv: Canvas, game: Game, ui: Ui, hint: String, hintAlpha: Float, hasInfo: Boolean, hintAge: Float) {
         cv.save()
         if (game.shake > 0f) cv.translate(sin(ui.clock * 95f) * game.shake * 3f, cos(ui.clock * 81f) * game.shake * 2.5f)
 
@@ -47,92 +49,64 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         effects(cv, game, confetti = false)
         popups(cv, game)
         boosters(cv, game, ui)
-        hintPopup(cv, hint, hintAge, hasInfo, ui)
+        if (hint.isNotEmpty()) hintPopup(cv, hintAlpha, hasInfo, hintAge)
         cv.restore()
     }
 
     // ---------- HUD ----------
 
-    private fun hud(cv: Canvas, game: Game, ui: Ui) {
-        if (titleId != game.level.id || titleVer != Lang.version) { titleId = game.level.id; titleVer = Lang.version; title = tr("Уровень $titleId", "Level $titleId") }
-        g.text(cv, title, 180f, 31f, 21f)
-        g.progressBar(cv, 80f, 38f, 280f, 54f, game.progress)
-        g.text(cv, doneText.of(game.done, game.total), 180f, 50f, 10.5f, Theme.WHITE, shadow = false)
-        g.roundButton(cv, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R, ui.pr(BTN_SOUND)); g.speaker(cv, Layout.HUD_L_X, Layout.HUD_Y, progress.sound)
-        g.roundButton(cv, Layout.HUD_R_X, Layout.HUD_Y, Layout.HUD_R, ui.pr(BTN_RESTART)); g.restart(cv, Layout.HUD_R_X, Layout.HUD_Y)
-    }
-
     // ---------- всплывающая подсказка ----------
 
-    /** Время показа подсказки, секунд (последняя секунда — затухание). */
-    private val hintShow = 8f
-    private val popupLines = ArrayList<String>(3)
-    private var popupKey = ""
-    private var popupVer = -1
-    private var popupInfo = false
-    /** Высота окна подсказки сейчас (0 — нечего показывать): по ней игра понимает, куда нажали. */
-    var hintH = 0f; private set
+    private var hintLines: List<String> = emptyList()
+    /** Рамка окошка подсказки (l, t, r, b): по нему игра понимает, что тап пришёл в подсказку. */
+    val hintBox = floatArrayOf(26f, 206f, 334f, 264f)
 
-    private fun easeOutBack(t: Float): Float { val c = 1.7f; val u = t.coerceIn(0f, 1f) - 1f; return 1f + (c + 1f) * u * u * u + c * u * u }
-
-    /** Переносит текст подсказки по словам в две строки (лишнее — многоточием; полный текст — в окне по значку «i»). */
-    private fun layoutHint(hint: String, hasInfo: Boolean) {
-        if (hint == popupKey && popupVer == Lang.version && popupInfo == hasInfo) return
-        popupKey = hint; popupVer = Lang.version; popupInfo = hasInfo
-        popupLines.clear()
-        val maxW = Layout.HINT_TEXT_W - (if (hasInfo) 26f else 0f)
-        val lines = g.wrap(hint, Layout.HINT_SIZE, Theme.fontMedium, maxW)
-        for (k in 0 until minOf(2, lines.size)) popupLines.add(lines[k])
-        if (lines.size > 2) {
-            var last = popupLines[1]
-            while (last.length > 1 && g.textWidth("$last…", Layout.HINT_SIZE, Theme.fontMedium) > maxW) last = last.dropLast(1).trimEnd()
-            popupLines[1] = "$last…"
-        }
-        hintH = if (popupLines.size >= 2) Layout.HINT_H2 else Layout.HINT_H1
+    /** Подготавливает текст окошка: переносы строк и высота. Вызывается при появлении новой подсказки. */
+    fun setHint(msg: String) {
+        hintLines = g.wrap(msg, 14.5f, Theme.fontMedium, 214f).take(3)
+        hintBox[1] = 206f
+        hintBox[3] = 206f + maxOf(58f, 26f + hintLines.size * 19f)
     }
 
-    /** Окно подсказки: карточка с лампочкой, текстом в одну-две строки и значком «i»; выезжает сверху и гаснет само. */
-    private fun hintPopup(cv: Canvas, hint: String, age: Float, hasInfo: Boolean, ui: Ui) {
-        val fade = (hintShow - age).coerceIn(0f, 1f) * min(1f, age / 0.12f)
-        if (hint.isEmpty() || fade <= 0f) { hintH = 0f; return }
-        layoutHint(hint, hasInfo)
-        val h = hintH
-        val l = Layout.HINT_X0; val r = Layout.HINT_X1; val top = Layout.HINT_TOP
-        val e = easeOutBack(age / 0.32f)
-        val cy = top + h / 2f
+    /** Центр значка «i» внутри окошка. */
+    fun infoX() = hintBox[2] - 30f
+    fun infoY() = (hintBox[1] + hintBox[3]) / 2f
+
+    private fun easeBack(t: Float): Float { val c = 1.7f; val u = t - 1f; return 1f + (c + 1f) * u * u * u + c * u * u }
+
+    /** Заметное окошко: тёмная карточка с золотой рамкой, значком и текстом; появляется «пружинкой». */
+    private fun hintPopup(cv: Canvas, alpha: Float, hasInfo: Boolean, age: Float) {
+        if (hintLines.isEmpty() || alpha <= 0f) return
+        val a = alpha * minOf(1f, age / 0.15f)
+        val sc = 0.8f + 0.2f * easeBack((age / 0.4f).coerceIn(0f, 1f))
+        val b = hintBox
+        val cx = (b[0] + b[2]) / 2f; val cy = (b[1] + b[3]) / 2f
         val p = g.p
-        cv.save()
-        cv.translate(180f, cy - (1f - e) * 18f); cv.scale(0.9f + 0.1f * e, 0.9f + 0.1f * e); cv.translate(-180f, -cy)
-        p.style = Paint.Style.FILL; p.shader = null
-        p.color = Theme.alpha(Theme.BLACK, (90 * fade).toInt()); g.rect.set(l, top + 5f, r, top + h + 5f); cv.drawRoundRect(g.rect, 16f, 16f, p)
-        p.color = Theme.alpha(Theme.cardFace, (250 * fade).toInt()); g.rect.set(l, top, r, top + h); cv.drawRoundRect(g.rect, 16f, 16f, p)
-        p.color = Theme.alpha(Theme.WHITE, (24 * fade).toInt()); g.rect.set(l + 3f, top + 3f, r - 3f, top + h * 0.48f); cv.drawRoundRect(g.rect, 13f, 13f, p)
-        p.style = Paint.Style.STROKE; p.strokeWidth = 2.4f; p.color = Theme.alpha(Theme.cardEdge, (255 * fade).toInt()); g.rect.set(l, top, r, top + h); cv.drawRoundRect(g.rect, 16f, 16f, p)
-        // лампочка в золотом круге
-        val pulse = 0.5f + 0.5f * sin(ui.clock * 3.2f)
-        p.style = Paint.Style.FILL
-        p.color = Theme.alpha(Theme.GOLD, ((50 + 40 * pulse) * fade).toInt()); cv.drawCircle(Layout.HINT_X0 + 24f, cy, 17f + 2f * pulse, p)
-        p.color = Theme.alpha(Theme.INK, (200 * fade).toInt()); cv.drawCircle(Layout.HINT_X0 + 24f, cy, 14f, p)
-        g.bulb(cv, Layout.HINT_X0 + 24f, cy, 0.78f, (255 * fade).toInt())
-        // текст
-        val tx = Layout.HINT_TEXT_X
-        val col = Theme.alpha(Theme.WHITE, (245 * fade).toInt())
-        if (popupLines.size >= 2) {
-            g.text(cv, popupLines[0], tx, cy - 3.5f, Layout.HINT_SIZE, col, Theme.fontMedium, Paint.Align.LEFT, shadow = false)
-            g.text(cv, popupLines[1], tx, cy + 13f, Layout.HINT_SIZE, col, Theme.fontMedium, Paint.Align.LEFT, shadow = false)
-        } else if (popupLines.size == 1) g.text(cv, popupLines[0], tx, cy + 4.7f, Layout.HINT_SIZE, col, Theme.fontMedium, Paint.Align.LEFT, shadow = false)
-        if (hasInfo) g.info(cv, Layout.HINT_INFO_X, cy, 1f + 0.06f * pulse, (255 * fade).toInt())
-        // тонкая полоска: сколько ещё будет висеть окно
-        val left = ((hintShow - 1f - age) / (hintShow - 1f)).coerceIn(0f, 1f)
-        if (left > 0f) {
-            p.style = Paint.Style.FILL; p.color = Theme.alpha(Theme.GOLD, (170 * fade).toInt())
-            g.rect.set(l + 16f, top + h - 5f, l + 16f + (r - l - 32f) * left, top + h - 3f); cv.drawRoundRect(g.rect, 1f, 1f, p)
+        cv.save(); cv.translate(cx, cy); cv.scale(sc, sc); cv.translate(-cx, -cy)
+        p.shader = null; p.style = Paint.Style.FILL
+        p.color = Theme.alpha(Theme.BLACK, (110 * a).toInt()); g.rect.set(b[0], b[1] + 6f, b[2], b[3] + 6f); cv.drawRoundRect(g.rect, 20f, 20f, p)
+        p.color = Theme.alpha(Theme.cardFace, (248 * a).toInt()); g.rect.set(b[0], b[1], b[2], b[3]); cv.drawRoundRect(g.rect, 20f, 20f, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = 2.5f; p.color = Theme.alpha(Theme.GOLD, (255 * a).toInt())
+        g.rect.set(b[0] + 1f, b[1] + 1f, b[2] - 1f, b[3] - 1f); cv.drawRoundRect(g.rect, 19f, 19f, p)
+        p.style = Paint.Style.FILL; p.color = Theme.alpha(Theme.GOLD, (255 * a).toInt()); cv.drawCircle(b[0] + 27f, cy, 15f, p)
+        g.text(cv, "!", b[0] + 27f, cy + 7.5f, 21f, Theme.alpha(Theme.INK, (255 * a).toInt()), shadow = false)
+        val n = hintLines.size
+        for (i in 0 until n) {
+            g.text(cv, hintLines[i], b[0] + 52f, cy - (n - 1) * 9.5f + i * 19f + 5f, 14.5f, Theme.alpha(Theme.WHITE, (250 * a).toInt()), Theme.fontMedium, Paint.Align.LEFT, shadow = false)
         }
+        if (hasInfo) g.info(cv, infoX(), cy, 1.3f, (255 * a).toInt())
         cv.restore()
     }
 
-    /** Попало ли нажатие в окно подсказки. */
-    fun hintHit(x: Float, y: Float): Boolean = hintH > 0f && x >= Layout.HINT_X0 && x <= Layout.HINT_X1 && y >= Layout.HINT_TOP && y <= Layout.HINT_TOP + hintH
+    private fun hud(cv: Canvas, game: Game, ui: Ui) {
+        if (titleId != game.level.id || titleVer != Lang.version) { titleId = game.level.id; titleVer = Lang.version; title = tr("Уровень $titleId", "Level $titleId") }
+        g.text(cv, title, 180f, 31f, 21f)
+        g.progressBar(cv, 100f, 38f, 260f, 54f, game.progress)
+        g.text(cv, doneText.of(game.done, game.total), 180f, 50f, 10.5f, Theme.WHITE, shadow = false)
+        g.roundButton(cv, Layout.G_EXIT_X, Layout.HUD_Y, Layout.G_R, ui.pr(BTN_LEAVE)); g.cross(cv, Layout.G_EXIT_X, Layout.HUD_Y, 0.85f)
+        g.roundButton(cv, Layout.G_SND_X, Layout.HUD_Y, Layout.G_R, ui.pr(BTN_SOUND)); g.speaker(cv, Layout.G_SND_X, Layout.HUD_Y, progress.sound, 0.72f)
+        g.roundButton(cv, Layout.G_RST_X, Layout.HUD_Y, Layout.G_R, ui.pr(BTN_RESTART)); g.restart(cv, Layout.G_RST_X, Layout.HUD_Y, 0.8f)
+    }
 
     // ---------- лента ----------
 
@@ -176,14 +150,21 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         g.crate(cv, a.tray[t.c], x, y, Assets.TRAY_W, Assets.TRAY_H, sc, alpha)
         val r = 8.5f * sc
         for (k in 0 until t.n) g.marble(cv, x + ((k % 3) - 1) * 20f * sc, y - h / 2 + 12f + 12f * sc + (k / 3) * 20f * sc, r, t.c, alpha)
+        if (t.arrow != 0) {                      // стрелки на табличке внизу лотка
+            val yy = y + h / 2 - 19f * sc
+            if (t.arrow and 1 != 0) g.arrow(cv, x - 14f * sc, yy, true, sc, alpha)
+            if (t.arrow and 2 != 0) g.arrow(cv, x + 14f * sc, yy, false, sc, alpha)
+        }
     }
+
+    private fun tx(game: Game, i: Int) = 180f + (game.colX[i] - 180f) * SQ
 
     private fun trays(cv: Canvas, game: Game, ui: Ui) {
         for (i in game.cols.indices) {
             val col = game.cols[i]
             for (k in minOf(col.size - 1, 2) downTo 0) {
                 val t = col[k]; val d = t.d
-                drawTray(cv, game.colX[i], TRAY_Y - 17f * d, 1f - 0.06f * d, t, if (k == 0) 255 else 235)
+                drawTray(cv, tx(game, i), TRAY_Y - 17f * d, (1f - 0.06f * d) * TS, t, if (k == 0) 255 else 235)
             }
         }
         links(cv, game, ui)
@@ -191,34 +172,36 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         for (li in 0 until game.leaving.size) {
             val l = game.leaving[li]
             val e = l.t * l.t
-            val cx = l.x + (180f - l.x) * e; val cy = TRAY_Y + (250f - TRAY_Y) * e
-            val sc = 1f - 0.55f * e
+            val lx = 180f + (l.x - 180f) * SQ
+            val cx = lx + (180f - lx) * e; val cy = TRAY_Y + (250f - TRAY_Y) * e
+            val sc = (1f - 0.55f * e) * TS
             cv.save(); cv.translate(cx, cy); cv.rotate((if (l.x < 180f) 1f else -1f) * 40f * e)
             drawTray(cv, 0f, 0f, sc, l.tray, (255 * (1f - e)).toInt())
             cv.restore()
         }
     }
 
-    private val linked = BooleanArray(8)
-
     /**
-     * Связанные лотки. Один понятный знак на всех: оба лотка пары обведены одинаковой золотой рамкой,
-     * а между ними стоит золотая «таблетка» со стрелкой от ведущего лотка к ведомому. Тап по ведущему высыпает и ведомого.
-     * Никаких других отметок (ни скоб, ни стрелок на самих лотках) нет, чтобы знак не дублировался.
+     * Связанные лотки: лоток со стрелкой (ведущий) обводится толстым золотом, лотки, которые он потянет за собой, —
+     * тонким, а между ними ставится скоба со стрелкой. Три прохода, чтобы обводка соседа не перекрывала скобу.
      */
     private fun links(cv: Canvas, game: Game, ui: Ui) {
         val pulse = 0.5f + 0.5f * sin(ui.clock * 4f)
         val p = g.p
-        java.util.Arrays.fill(linked, false)
-        eachLink(game) { from, to, _ -> linked[from] = true; linked[to] = true }
-        p.style = Paint.Style.STROKE; p.shader = null; p.strokeWidth = 3f; p.color = Theme.alpha(Theme.GOLD, (165 + 90 * pulse).toInt())
-        for (i in game.cols.indices) if (linked[i]) outline(cv, game, i, game.cols[i][0].d, p)
+        p.style = Paint.Style.STROKE; p.shader = null
+        // 1) ведомые: тонкая обводка
+        p.strokeWidth = 2f; p.color = Theme.alpha(Theme.GOLD, 150)
+        eachLink(game) { from, to, _ -> outline(cv, game, to, game.cols[from][0].d, p) }
+        // 2) ведущие: толстая пульсирующая обводка
+        p.strokeWidth = 3.6f; p.color = Theme.alpha(Theme.GOLD, (170 + 85 * pulse).toInt())
+        eachLink(game) { from, _, _ -> outline(cv, game, from, game.cols[from][0].d, p) }
+        // 3) скобы поверх всего
         eachLink(game) { from, to, right ->
-            g.linkBadge(cv, (game.colX[from] + game.colX[to]) / 2f, TRAY_Y - 17f * game.cols[from][0].d + 14f, right, 1f + 0.07f * pulse)
+            g.linkClamp(cv, (tx(game, from) + tx(game, to)) / 2f, TRAY_Y - 17f * game.cols[from][0].d, right, 1f + 0.08f * pulse)
         }
     }
 
-    /** Подсказка: пульсирующая белая рамка лотка и круги «нажми сюда», расходящиеся от его центра. */
+    /** Подсказка: пульсирующая белая обводка лотка и прыгающая стрелка над ним. */
     private fun hintPointer(cv: Canvas, game: Game, ui: Ui) {
         val ci = ui.hintCol
         if (ci !in game.cols.indices || game.cols[ci].isEmpty() || ui.hintT <= 0f) return
@@ -229,15 +212,12 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         p.style = Paint.Style.STROKE; p.shader = null; p.strokeWidth = 4.5f
         p.color = Theme.alpha(Theme.pointer, ((150 + 105 * pulse) * fade).toInt())
         outline(cv, game, ci, d, p)
-        val cx = game.colX[ci]; val cy = TRAY_Y - 17f * d
-        for (k in 0 until 2) {
-            val u = (ui.clock * 1.2f + k * 0.5f) % 1f
-            p.style = Paint.Style.STROKE; p.strokeWidth = 1.5f + 3f * (1f - u)
-            p.color = Theme.alpha(Theme.pointer, ((1f - u) * 210 * fade).toInt())
-            cv.drawCircle(cx, cy, 8f + 30f * u, p)
-        }
-        p.style = Paint.Style.FILL; p.color = Theme.alpha(Theme.pointer, (200 * fade).toInt())
-        cv.drawCircle(cx, cy, 6f + 1.5f * pulse, p)
+        val y = TRAY_Y - 17f * d - 58f - abs(sin(ui.clock * 5f)) * 10f
+        // стрелка вниз над лотком: рисуется путём, чтобы цвет зависел от темы
+        val ax = tx(game, ci)
+        p.style = Paint.Style.FILL; p.color = Theme.alpha(Theme.pointer, (255 * fade).toInt())
+        g.path.reset(); g.path.moveTo(ax - 11f, y - 9f); g.path.lineTo(ax + 11f, y - 9f); g.path.lineTo(ax, y + 11f); g.path.close()
+        cv.drawPath(g.path, p)
     }
 
     private inline fun eachLink(game: Game, f: (from: Int, to: Int, right: Boolean) -> Unit) {
@@ -252,8 +232,8 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
 
     private fun outline(cv: Canvas, game: Game, col: Int, d: Float, p: Paint) {
         val y = TRAY_Y - 17f * d
-        g.rect.set(game.colX[col] - 40f, y - 45f, game.colX[col] + 40f, y + 46f)
-        cv.drawRoundRect(g.rect, 18f, 18f, p)
+        g.rect.set(tx(game, col) - 41f * TS, y - 45f * TS, tx(game, col) + 41f * TS, y + 45f * TS)
+        cv.drawRoundRect(g.rect, 16f, 16f, p)
     }
 
     // ---------- коробки ----------

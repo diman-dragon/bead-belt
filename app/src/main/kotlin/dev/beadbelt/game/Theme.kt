@@ -85,20 +85,16 @@ object Theme {
         return (ch(24) shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
     }
 
-    /**
-     * Четыре тона каждого цвета шарика: блик, основной, тёмный, глубокий. Цвета разнесены по тону И по светлоте
-     * (тёмно-синий против светло-бирюзового, тёмно-красный против янтарного и розового), чтобы не сливались;
-     * на коробках и лотках к цвету добавлен ещё и значок-фигурка (см. Assets.glyph).
-     */
+    /** Четыре тона каждого цвета шарика: блик, основной, тёмный, глубокий. */
     val pal: Array<IntArray> = arrayOf(
-        longArrayOf(0xFFFF8A94, 0xFFE5192E, 0xFF8F0C1C),   // красный (тёмный, насыщенный)
-        longArrayOf(0xFF8FB4FF, 0xFF2B52F0, 0xFF0E1F94),   // синий (глубокий)
-        longArrayOf(0xFFB2F58C, 0xFF2DBE3C, 0xFF0B6A22),   // зелёный (травяной)
-        longArrayOf(0xFFFFF7A8, 0xFFFFDD00, 0xFFC09000),   // жёлтый (лимонный)
-        longArrayOf(0xFFD7B0FF, 0xFF8B3FE0, 0xFF4A1594),   // фиолетовый
-        longArrayOf(0xFFB0FBFF, 0xFF1FD0D8, 0xFF0A8189),   // бирюзовый (светлый)
-        longArrayOf(0xFFFFD2A0, 0xFFFF8C00, 0xFFA84700),   // оранжевый (янтарный)
-        longArrayOf(0xFFFFC4E6, 0xFFFF6FC0, 0xFFB02A78),   // розовый (светлый)
+        longArrayOf(0xFFFF9EA6, 0xFFFF2D4A, 0xFFB5122B),   // красный
+        longArrayOf(0xFF9CC4FF, 0xFF2F6BFF, 0xFF1239A8),   // синий
+        longArrayOf(0xFFA6F5BB, 0xFF22C55E, 0xFF0B7A33),   // зелёный
+        longArrayOf(0xFFFFF3A0, 0xFFFFD21F, 0xFFC08F00),   // жёлтый
+        longArrayOf(0xFFE8B8FF, 0xFFB04BFF, 0xFF6A18A8),   // фиолетовый
+        longArrayOf(0xFFA2F2FF, 0xFF14C8E8, 0xFF0A7C94),   // бирюзовый
+        longArrayOf(0xFFFFCF9E, 0xFFFF8A1F, 0xFFB04F00),   // оранжевый
+        longArrayOf(0xFFFFBCE0, 0xFFFF5FAE, 0xFFA8286A),   // розовый
     ).map { r ->
         val l = r[0].toInt(); val m = r[1].toInt(); val d = r[2].toInt()
         intArrayOf(l, m, d, mix(d, BLACK, 0.5f))

@@ -1,98 +1,45 @@
 package dev.beadbelt.game
 
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffColorFilter
-import android.graphics.RadialGradient
 import android.graphics.Shader
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.ceil
-import kotlin.math.cos
-import kotlin.math.min
 import kotlin.math.sin
 
 private val SPLASH_BX = floatArrayOf(152f, 216f, 152f)
 private val SPLASH_BY = floatArrayOf(-222f, 0f, 222f)
 
 /** Заставка, меню, настройки, список уровней, итоговая карточка и пауза. */
-class Screens(private val g: Painter, private val progress: Progress, private val version: String) {
-    // ---------- заголовок «BEAD BELT» ----------
-    // Каждая буква запечена в свой битмап в НАСТОЯЩЕМ разрешении экрана (а не в урезанном до 2x, как остальная графика):
-    // раньше заголовок растягивался из меньшей картинки и расплывался. Буквы отдельно, чтобы их можно было оживить.
+class Screens(private val g: Painter, private val progress: Progress, private val version: String, titleFont: android.graphics.Typeface) {
+    // Объёмный заголовок запечён один раз (Title3D); в кадре только покачивание и блик.
+    private val title = Title3D(g.a.k, titleFont)
 
-    /** Пикселей экрана на логическую единицу и сдвиг поля: нужны, чтобы ставить буквы ровно на пиксель. */
-    private val pxs = min(g.sw / W, g.sh / H)
-    private val pox = (g.sw - W * pxs) / 2f
-    private val poy = (g.sh - H * pxs) / 2f
-    private fun snapX(x: Float) = (Math.round(x * pxs + pox) - pox) / pxs
-    private fun snapY(y: Float) = (Math.round(y * pxs + poy) - poy) / pxs
+    // ---------- фон меню: огромная лента с едущими шариками ----------
 
-    private class Letter(val bmp: Bitmap, val cx: Float, val base: Float, val hw: Float, val row: Int)
-    private val letterAbove = 66f
-    private val letterBelow = 24f
-    private val letters: Array<Letter> = bakeLetters()
-
-    private fun bakeLetters(): Array<Letter> {
-        val size = 68f; val gap = 3f; val pad = 9f
-        val px = pxs.coerceIn(1f, 4f)
-        val out = ArrayList<Letter>(8)
-        for (row in 0..1) {
-            val word = if (row == 0) "BEAD" else "BELT"
-            val base = if (row == 0) 176f else 244f
-            val ws = FloatArray(4) { g.textWidth(word[it].toString(), size, Theme.fontBlack) }
-            var x = 180f - (ws.sum() + gap * 3) / 2f
-            val fill = if (row == 0) LinearGradient(0f, letterAbove - 54f, 0f, letterAbove + 4f, Theme.WHITE, 0xFFBDE4FF.toInt(), Shader.TileMode.CLAMP)
-                       else LinearGradient(0f, letterAbove - 54f, 0f, letterAbove + 4f, 0xFFFFF27A.toInt(), 0xFFFF9A1F.toInt(), Shader.TileMode.CLAMP)
-            val edge = if (row == 0) 0xFF1B2F9E.toInt() else 0xFF8A2A00.toInt()
-            for (k in 0 until 4) {
-                val w = ws[k]
-                val bw = w + 2 * pad
-                val bmp = Bitmap.createBitmap(ceil(bw * px).toInt(), ceil((letterAbove + letterBelow) * px).toInt(), Bitmap.Config.ARGB_8888)
-                val c = Canvas(bmp); c.scale(px, px)
-                val ch = word[k].toString()
-                g.text(c, ch, pad + w / 2f, letterAbove + 5f, size, 0, outline = Theme.alpha(Theme.BLACK, 95))     // чёткая тень
-                g.gradientText(c, ch, pad + w / 2f, letterAbove, size, fill, edge)
-                out.add(Letter(bmp, x + w / 2f, base, bw / 2f, row))
-                x += w + gap
-            }
-        }
-        return out.toTypedArray()
+    private val orbitPath = android.graphics.Path().also {
+        val sc = 1.5f
+        val r = android.graphics.RectF((Geo.CX - Geo.A - Geo.R) * sc, (Geo.CY - Geo.R) * sc, (Geo.CX + Geo.A + Geo.R) * sc, (Geo.CY + Geo.R) * sc)
+        it.addRoundRect(r, Geo.R * sc, Geo.R * sc, android.graphics.Path.Direction.CW)
     }
+    private val orbitPt = FloatArray(2)
 
-    private val letterPaint = Paint(Paint.FILTER_BITMAP_FLAG)
-
-    // лучи света за заголовком: запекаются один раз, в кадре — только поворот одного битмапа
-    private val rays: Bitmap = bakeRays()
-    private val raysPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
-        colorFilter = PorterDuffColorFilter(Theme.alpha(Theme.GOLD, if (Theme.dark) 120 else 190), PorterDuff.Mode.SRC_IN)
-    }
-
-    private fun bakeRays(): Bitmap {
-        val k = g.a.k
-        val half = 150f
-        val bmp = Bitmap.createBitmap(ceil(2 * half * k).toInt(), ceil(2 * half * k).toInt(), Bitmap.Config.ARGB_8888)
-        val c = Canvas(bmp); c.scale(k, k); c.translate(half, half)
-        val q = Paint(Paint.ANTI_ALIAS_FLAG)
-        q.shader = RadialGradient(0f, 0f, half, intArrayOf(Theme.alpha(Theme.WHITE, 120), Theme.alpha(Theme.WHITE, 0)), null, Shader.TileMode.CLAMP)
+    private fun orbit(cv: Canvas, t: Float) {
+        val sc = 1.5f
+        val dx = 180f - Geo.CX * sc
+        val dy = 400f - Geo.CY * sc
+        cv.save(); cv.translate(dx, dy)
+        g.p.style = Paint.Style.STROKE; g.p.shader = null
+        g.p.strokeWidth = 46f * sc; g.p.color = Theme.alpha(Theme.WHITE, if (Theme.dark) 8 else 34); cv.drawPath(orbitPath, g.p)
+        g.p.strokeWidth = 2f; g.p.color = Theme.alpha(Theme.WHITE, if (Theme.dark) 26 else 90)
+        cv.drawPath(orbitPath, g.p)
         val n = 14
-        val pth = Path()
-        for (i in 0 until n) {
-            val a0 = i * 2 * PI / n; val a1 = a0 + PI / n
-            pth.reset(); pth.moveTo(0f, 0f)
-            pth.lineTo((cos(a0) * half * 1.5).toFloat(), (sin(a0) * half * 1.5).toFloat())
-            pth.lineTo((cos(a1) * half * 1.5).toFloat(), (sin(a1) * half * 1.5).toFloat())
-            pth.close(); c.drawPath(pth, q)
+        for (j in 0 until n) {
+            Geo.point(t * 34f + j * Geo.L / n, orbitPt)
+            g.marble(cv, orbitPt[0] * sc, orbitPt[1] * sc, 11f, j % 6, if (Theme.dark) 70 else 85)
         }
-        return bmp
+        cv.restore()
     }
-
-    private val shinePath = Path()
-    private val clipPath = Path()
 
     private val levelNames = Array(LEVEL_COUNT + 1) { it.toString() }
 
@@ -106,8 +53,8 @@ class Screens(private val g: Painter, private val progress: Progress, private va
     private val flR = floatArrayOf(18f, 30f, 22f, 16f, 24f, 26f, 14f)
     private val flV = floatArrayOf(14f, 9f, 18f, 12f, 16f, 8f, 20f)
     private val flP = floatArrayOf(0f, 90f, 200f, 310f, 420f, 520f, 600f)
-    private val sparkX = floatArrayOf(62f, 300f, 238f, 92f, 292f)
-    private val sparkY = floatArrayOf(132f, 150f, 104f, 238f, 244f)
+    private val sparkX = floatArrayOf(50f, 312f, 294f, 64f, 180f)
+    private val sparkY = floatArrayOf(120f, 112f, 226f, 238f, 98f)
     private val brandW = g.textWidth("DataLaw DesignLab", 12f, Theme.fontMedium)
 
     /** «DataLaw DesignLab» со знаком — подпись материнской компании. */
@@ -116,173 +63,62 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         g.text(cv, "DataLaw DesignLab", 180f + 12f, y, 12f, Theme.textDim, Theme.fontMedium, shadow = false)
     }
 
-    // ---------- анимации меню ----------
-
-    private fun bounce(t0: Float): Float {
-        var t = t0.coerceIn(0f, 1f)
-        return when {
-            t < 1f / 2.75f -> 7.5625f * t * t
-            t < 2f / 2.75f -> { t -= 1.5f / 2.75f; 7.5625f * t * t + 0.75f }
-            t < 2.5f / 2.75f -> { t -= 2.25f / 2.75f; 7.5625f * t * t + 0.9375f }
-            else -> { t -= 2.625f / 2.75f; 7.5625f * t * t + 0.984375f }
-        }
-    }
-
-    /** Прогресс появления: 0 до начала `at`, 1 после `at + len`. */
-    private fun appear(e: Float, at: Float, len: Float) = ((e - at) / len).coerceIn(0f, 1f)
-
-    // мерцающие звёздочки по всему экрану меню
-    private val twX = floatArrayOf(28f, 332f, 60f, 300f, 20f, 340f, 120f, 250f, 176f)
-    private val twY = floatArrayOf(150f, 130f, 300f, 270f, 470f, 480f, 560f, 575f, 60f)
-    private val twP = floatArrayOf(0f, 1.3f, 2.1f, 0.7f, 3.3f, 1.9f, 2.7f, 0.4f, 3.9f)
-
-    /** Строка «DataLaw DesignLab» со знаком над заголовком: плашка выезжает сверху. */
-    private val ribbonText = "DataLaw DesignLab"
-    private val ribbonW = g.textWidth(ribbonText, 13f, Theme.fontMedium) * 1.08f
-
-    private fun ribbon(cv: Canvas, e: Float, t: Float) {
-        val a = appear(e, 0.05f, 0.45f)
-        if (a <= 0f) return
-        val w = 24f + 10f + ribbonW + 26f
-        val x0 = 180f - w / 2f; val y = 96f - (1f - easeOutBack(a)) * 26f
-        val p = g.p
-        p.style = Paint.Style.FILL; p.shader = null
-        p.color = Theme.alpha(Theme.BLACK, (60 * a).toInt()); g.rect.set(x0, y - 12f + 3f, x0 + w, y + 13f + 3f); cv.drawRoundRect(g.rect, 13f, 13f, p)
-        p.color = Theme.alpha(Theme.pillBg, (235 * a).toInt()); g.rect.set(x0, y - 12f, x0 + w, y + 13f); cv.drawRoundRect(g.rect, 13f, 13f, p)
-        p.style = Paint.Style.STROKE; p.strokeWidth = 1.5f; p.color = Theme.alpha(Theme.GOLD, (150 * a).toInt()); cv.drawRoundRect(g.rect, 13f, 13f, p)
-        Logo.draw(cv, x0 + 22f, y, 20f, Theme.WHITE, 1f, (255 * a).toInt())
-        g.text(cv, ribbonText, x0 + 38f, y + 4.6f, 13f, Theme.alpha(Theme.WHITE, (240 * a).toInt()), Theme.fontMedium, Paint.Align.LEFT, shadow = false, spacing = 0.08f)
-        // блик пробегает по плашке раз в несколько секунд
-        val sh = ((t % 4.5f) - 1f) / 0.9f
-        if (sh in 0f..1f) {
-            cv.save(); clipPath.reset(); clipPath.addRoundRect(g.rect, 13f, 13f, Path.Direction.CW); cv.clipPath(clipPath)
-            p.style = Paint.Style.FILL; p.color = Theme.alpha(Theme.WHITE, (70 * a).toInt())
-            val sx = x0 - 20f + (w + 40f) * sh
-            shinePath.reset(); shinePath.moveTo(sx, y - 14f); shinePath.lineTo(sx + 10f, y - 14f); shinePath.lineTo(sx - 4f, y + 14f); shinePath.lineTo(sx - 14f, y + 14f); shinePath.close()
-            cv.drawPath(shinePath, p); cv.restore()
-        }
-    }
-
-    /** Блик, пробегающий по кнопке: клип по её форме и наклонная светлая полоса. */
-    private fun buttonShine(cv: Canvas, l: Float, t: Float, r: Float, b: Float, clock: Float, phase: Float) {
-        val u = ((clock + phase) % 3.6f) / 0.8f
-        if (u > 1f) return
-        val rad = (b - t) * 0.32f
-        cv.save()
-        g.rect.set(l, t, r, b); clipPath.reset(); clipPath.addRoundRect(g.rect, rad, rad, Path.Direction.CW); cv.clipPath(clipPath)
-        g.p.style = Paint.Style.FILL; g.p.shader = null; g.p.color = Theme.alpha(Theme.WHITE, 85)
-        val sx = l - 30f + (r - l + 60f) * u; val h = b - t
-        shinePath.reset(); shinePath.moveTo(sx, t); shinePath.lineTo(sx + 22f, t); shinePath.lineTo(sx + 22f - h * 0.5f, b); shinePath.lineTo(sx - h * 0.5f, b); shinePath.close()
-        cv.drawPath(shinePath, g.p)
-        cv.restore()
-    }
-
     fun menu(cv: Canvas, ui: Ui) {
         val t = ui.clock
-        val e = t - ui.menuAt                   // сколько секунд назад открыли меню: от этого идут анимации появления
         if (playKey != progress.unlocked || labelsVer != Lang.version) {
             playKey = progress.unlocked; labelsVer = Lang.version
             playLabel = if (playKey == 1) tr("Играть", "Play") else tr("Играть · уровень $playKey", "Play · level $playKey")
             levelsLabel = tr("Уровни  $playKey/$LEVEL_COUNT", "Levels  $playKey/$LEVEL_COUNT")
         }
-        // фон: медленно поднимающиеся шарики
+        orbit(cv, t)
+        // фон: медленно поднимающиеся шарики и тёплое свечение за заголовком
         for (i in flX.indices) {
             val y = H + 40f - ((t * flV[i] + flP[i]) % (H + 80f))
             val x = flX[i] + sin(t * 0.6f + i) * 12f
             g.marble(cv, x, y, flR[i], i % 6, if (Theme.dark) 110 else 80)
         }
-        // мерцающие звёздочки
-        for (i in twX.indices) {
-            val a = sin(t * 1.7f + twP[i] * 2.3f)
-            if (a > 0.1f) g.glint(cv, twX[i], twY[i], 5f + 5f * a, (a * a * (if (Theme.dark) 200 else 255)).toInt())
-        }
-        // тёплое свечение и вращающиеся лучи за заголовком
-        val glowA = appear(e, 0f, 0.8f)
-        val gp = (1f + 0.03f * sin(t * 1.3f)) * (0.6f + 0.4f * glowA)
+        val gp = 1f + 0.03f * sin(t * 1.3f)
         g.rect.set(180f - 190f * gp, 180f - 150f * gp, 180f + 190f * gp, 180f + 150f * gp)
         cv.drawBitmap(g.a.glow, null, g.rect, g.a.goldGlow)
-        if (glowA > 0f) {
-            cv.save(); cv.translate(180f, 186f); cv.rotate(t * 7f); cv.scale(1.35f * glowA, 1.35f * glowA)
-            g.rect.set(-150f, -150f, 150f, 150f); cv.drawBitmap(rays, null, g.rect, raysPaint)
-            cv.restore()
-        }
 
         g.coinPill(cv, 284f, 36f, progress.coins)
         g.roundButton(cv, Layout.MENU_GEAR_X, Layout.MENU_GEAR_Y, 22f, ui.pr(BTN_SETTINGS))
-        cv.save(); cv.translate(Layout.MENU_GEAR_X, Layout.MENU_GEAR_Y); cv.rotate(t * 22f); g.gear(cv, 0f, 0f); cv.restore()
+        g.gear(cv, Layout.MENU_GEAR_X, Layout.MENU_GEAR_Y)
 
-        ribbon(cv, e, t)
-
-        // заголовок: буквы по очереди падают и пружинят, потом плавно «дышат» волной, а раз в несколько секунд по ним бежит прыжок
-        for (i in letters.indices) {
-            val l = letters[i]
-            val u = appear(e, 0.18f + (i % 4) * 0.08f + (i / 4) * 0.22f, 0.7f)
-            if (u <= 0f) continue
-            var dy = -(1f - bounce(u)) * 190f
-            if (u >= 1f) {
-                dy += sin(t * 2.3f + i * 0.7f + l.row * 1.1f) * 2.2f
-                val ph = (t * 5.5f) % 38f - i * 1.2f
-                if (ph in 0f..PI.toFloat()) dy -= sin(ph) * 9f
-            }
-            letterPaint.alpha = (min(1f, u * 5f) * 255).toInt()
-            val top = snapY(l.base - letterAbove + dy)
-            val left = snapX(l.cx - l.hw)
-            g.rect.set(left, top, left + l.hw * 2f, top + letterAbove + letterBelow)
-            cv.drawBitmap(l.bmp, null, g.rect, letterPaint)
-        }
-        // блеск, пробегающий по буквам: сперва верхнее слово, потом нижнее
-        val sw0 = (t % 5.2f) / 1.0f
-        if (e > 1.3f && sw0 < 2f) {
-            val row = sw0.toInt(); val f = sw0 - row
-            g.glint(cv, 70f + 220f * f, 150f + row * 68f + sin(f * 6.28f) * 4f, 9f + 5f * sin(f * 3.14f), (sin(f * 3.14f) * 255).toInt())
-        }
+        title.draw(cv, t, 30f, 80f)
         for (i in sparkX.indices) {                // искры на заголовке
             val a = sin(t * 2.1f + i * 1.9f)
-            if (a > 0f && e > 1.2f) g.glint(cv, sparkX[i], sparkY[i], 8f + 6f * a, (a * a * 255).toInt())
+            if (a > 0f) g.glint(cv, sparkX[i], sparkY[i], 8f + 6f * a, (a * a * 255).toInt())
         }
 
         // конвейерная лента под прыгающими шариками
-        val beltA = easeOutBack(appear(e, 0.55f, 0.5f))
-        if (beltA > 0f) {
-            cv.save(); cv.translate(180f, 337f); cv.scale(beltA, beltA); cv.translate(-180f, -337f)
-            g.p.style = Paint.Style.FILL; g.p.shader = null
-            g.p.color = Theme.beltFace; g.rect.set(34f, 330f, 326f, 344f); cv.drawRoundRect(g.rect, 7f, 7f, g.p)
-            g.p.color = Theme.alpha(Theme.WHITE, 46)
-            for (k in 0 until 15) {
-                val x = 40f + (k * 20f + t * 40f) % 300f
-                if (x + 8f < 322f) { g.rect.set(x, 334f, x + 8f, 340f); cv.drawRoundRect(g.rect, 2f, 2f, g.p) }
-            }
-            g.p.style = Paint.Style.STROKE; g.p.strokeWidth = 2f; g.p.color = Theme.troughRim
-            g.rect.set(34f, 330f, 326f, 344f); cv.drawRoundRect(g.rect, 7f, 7f, g.p)
-            cv.restore()
+        g.p.style = Paint.Style.FILL; g.p.shader = null
+        g.p.color = Theme.beltFace; g.rect.set(34f, 330f, 326f, 344f); cv.drawRoundRect(g.rect, 7f, 7f, g.p)
+        g.p.color = Theme.alpha(Theme.WHITE, 46)
+        for (k in 0 until 15) {
+            val x = 40f + (k * 20f + t * 40f) % 300f
+            if (x + 8f < 322f) { g.rect.set(x, 334f, x + 8f, 340f); cv.drawRoundRect(g.rect, 2f, 2f, g.p) }
         }
-        for (i in 0 until 7) {                     // прыгающие шарики: появляются по очереди, потом скачут волной
-            val ua = appear(e, 0.6f + i * 0.07f, 0.4f)
-            if (ua <= 0f) continue
+        g.p.style = Paint.Style.STROKE; g.p.strokeWidth = 2f; g.p.color = Theme.troughRim
+        g.rect.set(34f, 330f, 326f, 344f); cv.drawRoundRect(g.rect, 7f, 7f, g.p)
+
+        for (i in 0 until 7) {                     // прыгающие шарики
             val ph = t * 3.2f + i * 0.75f
             val bob2 = abs(sin(ph))
             val x = 48f + i * 44f
-            val sc = easeOutBack(ua)
-            g.shadowBlob(cv, x, 322f, (14f - bob2 * 5f) * sc, ((150 - bob2 * 80) * ua).toInt())
-            g.marble(cv, x, 298f - bob2 * 22f - (1f - ua) * 60f, 16f * sc, (i + (t / 2.4f).toInt()) % 6)
+            g.shadowBlob(cv, x, 322f, 14f - bob2 * 5f, (150 - bob2 * 80).toInt())
+            g.marble(cv, x, 298f - bob2 * 22f, 16f, i % 6)
         }
 
-        // кнопки выезжают снизу по очереди; на главной бегает блик
-        val pa = appear(e, 0.75f, 0.5f)
         val pulse = 1f + 0.022f * sin(t * 3.4f)
+        cv.save(); cv.translate(180f, (Layout.MENU_PLAY[1] + Layout.MENU_PLAY[3]) / 2f); cv.scale(pulse, pulse)
         val r = Layout.MENU_PLAY; val hh = (r[3] - r[1]) / 2f
-        cv.save(); cv.translate(180f, (r[1] + r[3]) / 2f + (1f - easeOutBack(pa)) * 90f); cv.scale(pulse, pulse)
         g.button(cv, r[0] - 180f, -hh, r[2] - 180f, hh, playLabel, 0, ui.pr(BTN_PLAY))
-        buttonShine(cv, r[0] - 180f, -hh, r[2] - 180f, hh, t, 0.6f)
         cv.restore()
-        val la = appear(e, 0.87f, 0.5f)
         val l = Layout.MENU_LEVELS
-        cv.save(); cv.translate(0f, (1f - easeOutBack(la)) * 110f)
         g.button(cv, l[0], l[1], l[2], l[3], levelsLabel, 1, ui.pr(BTN_LEVELS))
-        cv.restore()
 
-        val ra = easeOutBack(appear(e, 1.0f, 0.5f))
-        val ry = Layout.MENU_SOUND_Y + (1f - ra) * 100f
+        val ry = Layout.MENU_SOUND_Y
         g.roundButton(cv, Layout.MENU_SOUND_X, ry, 24f, ui.pr(BTN_SOUND))
         g.speaker(cv, Layout.MENU_SOUND_X, ry, progress.sound)
         val ready = progress.giftReady()
@@ -295,10 +131,12 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         }
         g.roundButton(cv, Layout.MENU_HELP_X, ry, 24f, ui.pr(BTN_HELP))
         g.text(cv, "?", Layout.MENU_HELP_X, ry + 9f, 26f, Theme.WHITE)
+        g.roundButton(cv, Layout.MENU_EXIT_X, ry, 24f, ui.pr(BTN_QUIT))
+        g.cross(cv, Layout.MENU_EXIT_X, ry, 1.2f)
         val msgA = (3.5f - (ui.clock - ui.menuMsgAt)).coerceIn(0f, 1f)
         if (msgA > 0f) g.text(cv, ui.menuMsg, 180f, 586f, 15f, Theme.alpha(Theme.accentText, (msgA * 255).toInt()), Theme.fontMedium)
-        // версия внизу
-        g.text(cv, "v$version", 180f, 624f, 13f, Theme.alpha(Theme.text, (140 * appear(e, 1.1f, 0.5f)).toInt()), Theme.fontMedium, shadow = false, spacing = 0.06f)
+        brand(cv, 604f)
+        g.text(cv, "v$version", 180f, 624f, 11f, Theme.textDim, Theme.fontMedium, shadow = false)
     }
 
     // ---------- заставка при запуске ----------
@@ -523,7 +361,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
     private val rulesRu = listOf(
         "Нажми на лоток: шарики посыплются" to "в воронку и поедут по конвейеру.",
         "Шарик сам влетит в коробку своего" to "цвета, когда проедет мимо. Нужно по 3.",
-        "Золотая стрелка между лотками: тап по" to "ведущему запускает и соседа тоже.",
+        "Золотая скоба: тап запускает сразу" to "оба лотка, связанных стрелкой.",
         "Замок: коробка откроется после того," to "как соберётся первая любая коробка.",
         "Лента забита, и ничего не подходит —" to "проигрыш. Думай, что и когда сыпать.",
         "Лампочка подскажет лучший ход, ракета" to "закроет коробку, «Вернуть» разгрузит ленту.",
@@ -532,7 +370,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
     private val rulesEn = listOf(
         "Tap a tray: its beads pour" to "into the funnel and ride the belt.",
         "A bead jumps into the box of its" to "color as it passes by. Each needs 3.",
-        "Golden arrow between trays: tapping" to "the leading one launches both.",
+        "Golden clasp: one tap launches" to "both trays linked by the arrow.",
         "Padlock: the box opens once any" to "other box has been filled.",
         "Belt full and nothing matches —" to "you lose. Plan what to pour and when.",
         "The bulb shows the best move, the" to "rocket fills a box, Return clears the belt.",
