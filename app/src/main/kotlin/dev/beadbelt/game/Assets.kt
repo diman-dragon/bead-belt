@@ -24,6 +24,8 @@ class Assets(scale: Float) {
         const val TRAY_H = 84f
         const val BOARD_Y0 = 60f    // верх запечённого поля (воронка + лента)
         const val BOARD_H = 436f
+        /** Верх видимых стенок воронки (в координатах физики): ниже низа лотков, чтобы стекло их не касалось. */
+        const val FUNNEL_TOP = 248f
     }
 
     val k = scale.coerceIn(1f, 2f)        // «лёгкое» разрешение запекания: меньше памяти и заливки
@@ -98,6 +100,39 @@ class Assets(scale: Float) {
     val box: Array<Bitmap> = Array(COLOR_COUNT) { bakeCrate(it, BOX_W, BOX_H, box = true, dim = false) }
     val boxDim: Array<Bitmap> = Array(COLOR_COUNT) { bakeCrate(it, BOX_W, BOX_H, box = true, dim = true) }
 
+    /** Значок-фигурка цвета: на коробках и лотках цвет читается ещё и по форме (помогает, когда оттенки похожи). */
+    private fun glyph(cv: Canvas, c: Int, x: Float, y: Float, r: Float, q: Paint) {
+        val pth = Path()
+        when (c) {
+            0 -> {          // сердце
+                pth.moveTo(x, y + r); pth.cubicTo(x - r * 1.5f, y - r * 0.1f, x - r * 0.8f, y - r * 1.0f, x, y - r * 0.35f)
+                pth.cubicTo(x + r * 0.8f, y - r * 1.0f, x + r * 1.5f, y - r * 0.1f, x, y + r); pth.close()
+            }
+            1 -> pth.addCircle(x, y, r * 0.9f, Path.Direction.CW)           // круг
+            2 -> { pth.moveTo(x, y - r); pth.lineTo(x + r * 1.0f, y + r * 0.8f); pth.lineTo(x - r * 1.0f, y + r * 0.8f); pth.close() }   // треугольник
+            3 -> {          // звезда
+                for (i in 0 until 10) {
+                    val a = -Math.PI / 2 + i * Math.PI / 5; val rr = if (i % 2 == 0) r * 1.1f else r * 0.48f
+                    val px = x + (Math.cos(a) * rr).toFloat(); val py = y + (Math.sin(a) * rr).toFloat()
+                    if (i == 0) pth.moveTo(px, py) else pth.lineTo(px, py)
+                }
+                pth.close()
+            }
+            4 -> { pth.moveTo(x, y - r * 1.1f); pth.lineTo(x + r * 0.85f, y); pth.lineTo(x, y + r * 1.1f); pth.lineTo(x - r * 0.85f, y); pth.close() }   // ромб
+            5 -> pth.addRoundRect(RectF(x - r * 0.85f, y - r * 0.85f, x + r * 0.85f, y + r * 0.85f), r * 0.25f, r * 0.25f, Path.Direction.CW)           // квадрат
+            6 -> { for (i in 0 until 6) { val a = Math.PI / 6 + i * Math.PI / 3; val px = x + (Math.cos(a) * r).toFloat(); val py = y + (Math.sin(a) * r).toFloat(); if (i == 0) pth.moveTo(px, py) else pth.lineTo(px, py) }; pth.close() }   // шестиугольник
+            else -> {       // крест
+                val t = r * 0.38f
+                pth.addRoundRect(RectF(x - r, y - t, x + r, y + t), t * 0.6f, t * 0.6f, Path.Direction.CW)
+                pth.addRoundRect(RectF(x - t, y - r, x + t, y + r), t * 0.6f, t * 0.6f, Path.Direction.CW)
+            }
+        }
+        q.style = Paint.Style.FILL; q.shader = null
+        q.color = Theme.alpha(Theme.BLACK, 70); cv.save(); cv.translate(0f, 1.1f); cv.drawPath(pth, q); cv.restore()
+        q.color = Theme.alpha(white, 235); cv.drawPath(pth, q)
+        q.style = Paint.Style.FILL
+    }
+
     private fun bakeCrate(c: Int, w: Float, h: Float, box: Boolean, dim: Boolean): Bitmap {
         val bmp = bitmap(w + 2 * PAD, h + 2 * PAD + EXTRA)
         val cv = Canvas(bmp)
@@ -122,8 +157,11 @@ class Assets(scale: Float) {
         cv.drawRoundRect(rr, 11f, 11f, q)
         q.shader = null
         // контур
-        q.style = Paint.Style.STROKE; q.strokeWidth = 1.4f; q.color = Theme.alpha(col[3], 160)
-        rr.set(0.7f, 0.7f, w - 0.7f, h - 0.7f); cv.drawRoundRect(rr, rad, rad, q)
+        // чёткий тёмный контур: слои стопки лотков не сливаются друг с другом
+        q.style = Paint.Style.STROKE; q.strokeWidth = 2.6f; q.color = Theme.alpha(col[3], 235)
+        rr.set(1.3f, 1.3f, w - 1.3f, h - 1.3f); cv.drawRoundRect(rr, rad, rad, q)
+        q.strokeWidth = 1.2f; q.color = Theme.alpha(white, 70)
+        rr.set(2.9f, 2.9f, w - 2.9f, h - 2.9f); cv.drawRoundRect(rr, rad - 1.6f, rad - 1.6f, q)
         q.style = Paint.Style.FILL
 
         // полость (колодец)
@@ -147,11 +185,10 @@ class Assets(scale: Float) {
                 q.color = Theme.alpha(Theme.BLACK, 150); cv.drawCircle(hx, 34f, 9.5f, q)
             }
             q.color = Theme.alpha(white, 26); rr.set(10f, 58f, w - 10f, h - 9f); cv.drawRoundRect(rr, 10f, 10f, q)
-            q.style = Paint.Style.STROKE; q.strokeWidth = 1.6f; q.color = Theme.alpha(white, 90)
-            cv.drawCircle(w / 2, 74f, 6f, q)
-            q.style = Paint.Style.FILL
+            glyph(cv, c, w / 2, 74f, 7.4f, q)
         } else {
-            q.color = Theme.alpha(white, 30); rr.set(w / 2 - 24f, h - 27f, w / 2 + 24f, h - 11f); cv.drawRoundRect(rr, 8f, 8f, q)   // табличка под стрелки
+            q.color = Theme.alpha(white, 30); rr.set(w / 2 - 17f, h - 26f, w / 2 + 17f, h - 10f); cv.drawRoundRect(rr, 8f, 8f, q)   // табличка со значком цвета
+            glyph(cv, c, w / 2, h - 18f, 5.6f, q)
         }
 
         if (dim) {
@@ -233,42 +270,44 @@ class Assets(scale: Float) {
         q.shader = LinearGradient(0f, beamTop, 0f, Geo.CY - Geo.R, Theme.alpha(0xFF9CF0FF.toInt(), 70), 0, Shader.TileMode.CLAMP)
         rr.set(Geo.CX - 9f, beamTop, Geo.CX + 9f, Geo.CY - Geo.R + 4f); cv.drawRoundRect(rr, 8f, 8f, q); q.shader = null
 
-        // ---- воронка: поднята над лентой на LIFT ----
+        // ---- воронка: поднята над лентой на LIFT; стенки видны только ниже лотков и не касаются их ----
+        // Форма строго симметрична относительно x = 180: тело и горловина — один замкнутый контур,
+        // а стенки, блики и ободки рисуются для левой половины и зеркально повторяются справа.
         cv.save(); cv.translate(0f, -LIFT)
+        val top = FUNNEL_TOP
 
         // стеклянное тело — светлее у краёв и голубое свечение у горловины
-        path.reset(); path.moveTo(WALLS[0][0], WALLS[0][1])
-        for (w in WALLS) path.lineTo(w[2], w[3])
+        path.reset(); path.moveTo(12f, top); path.lineTo(12f, 250f); path.lineTo(171f, 328f); path.lineTo(189f, 328f); path.lineTo(348f, 250f); path.lineTo(348f, top); path.close()
         q.style = Paint.Style.FILL
-        q.shader = LinearGradient(0f, 120f, 0f, 332f, intArrayOf(Theme.glassTop, Theme.glassMid, Theme.alpha(0xFF8FEAFF.toInt(), 70)), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
+        q.shader = LinearGradient(0f, top, 0f, 332f, intArrayOf(Theme.glassTop, Theme.glassMid, Theme.alpha(0xFF8FEAFF.toInt(), 70)), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
         cv.drawPath(path, q); q.shader = null
 
-        // металлическая горловина
+        // металлическая горловина (один симметричный контур)
         path.reset(); path.moveTo(150f, 326f); path.lineTo(210f, 326f); path.lineTo(199f, 343f); path.lineTo(161f, 343f); path.close()
         q.shader = LinearGradient(0f, 326f, 0f, 343f, 0xFFD4E0FF.toInt(), 0xFF5A70AC.toInt(), Shader.TileMode.CLAMP)
         cv.drawPath(path, q); q.shader = null
         q.style = Paint.Style.STROKE; q.strokeWidth = 2f; q.strokeJoin = Paint.Join.ROUND; q.color = 0xFF2A3D7C.toInt(); cv.drawPath(path, q)
-        q.style = Paint.Style.FILL; q.color = Theme.alpha(white, 170); cv.drawCircle(158f, 332f, 1.8f, q); cv.drawCircle(202f, 332f, 1.8f, q)
 
-        // стенки воронки: левая половина рисуется и отражается, поэтому обе стороны строго одинаковы
-        val half = Path().apply { moveTo(12f, 120f); lineTo(12f, 250f); lineTo(171f, 328f); lineTo(180f, 328f) }
-        val streak = Path().apply { moveTo(20f, 128f); lineTo(20f, 246f); lineTo(156f, 318f) }
+        // левая половина стенок, потом то же зеркально справа
         for (side in 0..1) {
             cv.save()
-            if (side == 1) { cv.translate(360f, 0f); cv.scale(-1f, 1f) }
+            if (side == 1) { cv.translate(W, 0f); cv.scale(-1f, 1f) }
+            path.reset(); path.moveTo(12f, top); path.lineTo(12f, 250f); path.lineTo(171f, 328f); path.lineTo(180f, 328f)
             q.style = Paint.Style.STROKE; q.strokeCap = Paint.Cap.ROUND; q.strokeJoin = Paint.Join.ROUND
-            q.strokeWidth = 11f; q.color = 0xFF22356F.toInt(); cv.drawPath(half, q)
-            q.strokeWidth = 7f; q.color = 0xFF9DB2E8.toInt(); cv.drawPath(half, q)
-            q.strokeWidth = 3.2f; q.color = 0xFFE4EDFF.toInt(); cv.drawPath(half, q)
-            q.strokeWidth = 2.4f; q.color = Theme.alpha(white, 70); cv.drawPath(streak, q)
-            // ободок сверху: светлый «ус» с золотой кромкой
+            q.strokeWidth = 11f; q.color = 0xFF22356F.toInt(); cv.drawPath(path, q)
+            q.strokeWidth = 7f; q.color = 0xFF9DB2E8.toInt(); cv.drawPath(path, q)
+            q.strokeWidth = 3.2f; q.color = 0xFFE4EDFF.toInt(); cv.save(); cv.translate(-0.8f, -1.2f); cv.drawPath(path, q); cv.restore()
+            // световая полоса внутри стекла вдоль наклонной стенки
+            q.strokeWidth = 2.4f; q.color = Theme.alpha(white, 80)
+            path.reset(); path.moveTo(22f, 258f); path.lineTo(148f, 320f); cv.drawPath(path, q)
+            // ободок сверху стенки
             q.style = Paint.Style.FILL; q.strokeCap = Paint.Cap.BUTT
-            rr.set(1f, 111f, 23f, 126f)
-            q.shader = LinearGradient(0f, 111f, 0f, 126f, 0xFFE4EDFF.toInt(), 0xFF6F86C8.toInt(), Shader.TileMode.CLAMP)
+            rr.set(1f, top - 7f, 23f, top + 8f)
+            q.shader = LinearGradient(0f, top - 7f, 0f, top + 8f, 0xFFE4EDFF.toInt(), 0xFF6F86C8.toInt(), Shader.TileMode.CLAMP)
             cv.drawRoundRect(rr, 7.5f, 7.5f, q); q.shader = null
             q.style = Paint.Style.STROKE; q.strokeWidth = 1.6f; q.color = 0xFF22356F.toInt(); cv.drawRoundRect(rr, 7.5f, 7.5f, q)
-            q.strokeWidth = 1.4f; q.color = Theme.alpha(0xFFFFC21F.toInt(), 200); cv.drawLine(5f, 113f, 19f, 113f, q)
-            q.style = Paint.Style.FILL
+            // заклёпка на горловине
+            q.style = Paint.Style.FILL; q.color = Theme.alpha(white, 170); cv.drawCircle(158f, 332f, 1.8f, q)
             cv.restore()
         }
 

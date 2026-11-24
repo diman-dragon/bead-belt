@@ -16,7 +16,7 @@ const val TIP_LIFT = 3
 const val TIP_HINT = 4
 const val TIP_FULL = 5
 
-/** Всё, что сохраняется между запусками: уровни, звёзды, монеты, помощники, подарок, звук, язык и тема. */
+/** Прогресс новой версии. Отдельное хранилище намеренно начинает игру с нуля и не читает старые сохранения. */
 class Progress(context: Context) {
     companion object {
         const val ROCKET_PRICE = 60
@@ -40,7 +40,7 @@ class Progress(context: Context) {
             context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
     }
 
-    private val prefs = context.getSharedPreferences("bead2", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("bead_v2_fresh_start", Context.MODE_PRIVATE)
 
     var unlocked = prefs.getInt("unlocked", 1).coerceIn(1, LEVEL_COUNT); private set
     var coins = prefs.getInt("coins", 100); private set

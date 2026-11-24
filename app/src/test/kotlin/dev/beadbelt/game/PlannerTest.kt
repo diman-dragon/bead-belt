@@ -28,19 +28,13 @@ class PlannerTest {
         return g.state
     }
 
-    /**
-     * Игрок с подсказкой выигрывает почти всегда (раскладка физики каждый раз другая). Проверяется каждый седьмой уровень:
-     * на каждом из них не реже 3 раз из 5, а в среднем не реже 85%. Точная настройка лент — tools/README.md.
-     */
+    /** На каждом уровне игрок с подсказкой выигрывает не реже 4 раз из 5 (раскладка физики каждый раз другая). */
     @Test
     fun followingHintsWinsAlmostAlways() {
-        var played = 0; var won = 0
-        for (id in 1..LEVEL_COUNT step 7) {
+        for (id in 1..LEVEL_COUNT) {
             val wins = (1L..5L).count { playWithHints(Levels.make(id), it) == State.WON }
-            played += 5; won += wins
-            assertTrue("уровень $id: подсказке удалось выиграть лишь $wins из 5", wins >= 3)
+            assertTrue("уровень $id: подсказке удалось выиграть лишь $wins из 5", wins >= 4)
         }
-        assertTrue("подсказка выигрывает слишком редко: $won из $played", won * 100 >= played * 85)
     }
 
     /** Разный seed физики воронки даёт разную партию: непредсказуемость сохранена. */
@@ -63,7 +57,7 @@ class PlannerTest {
             val g = Game(Levels.make(id)) { _, _ -> }
             repeat(40) { g.update(dt) }
             val a = Hints.advise(g)
-            assertTrue("уровень $id: подсказка в начале — ход", a.kind == Advice.TAP || a.kind == Advice.UNSURE)
+            assertEquals("уровень $id", Advice.TAP, a.kind)
             assertTrue(a.col in g.cols.indices && g.cols[a.col].isNotEmpty())
         }
     }

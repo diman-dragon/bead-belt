@@ -19,9 +19,6 @@ const val BTN_HELP = 14
 const val BTN_SETTINGS = 15
 const val BTN_INFO = 16         // значок «i» рядом с подсказкой
 const val BTN_INFO_OK = 17      // закрыть окно с пояснением
-const val BTN_QUIT = 18         // выход из приложения (меню)
-const val BTN_LEAVE = 19        // выход из уровня в меню (крестик в игре)
-const val BTN_HINT_CLOSE = 50   // закрыть всплывающую подсказку
 const val BTN_LANG = 20         // BTN_LANG + 0 авто, 1 русский, 2 английский
 const val BTN_THEME = 30        // BTN_THEME + 0 тёмная, 1 светлая
 const val BTN_SOUND_ON = 40
@@ -33,11 +30,10 @@ object Layout {
     // меню
     val MENU_PLAY = floatArrayOf(50f, 340f, 310f, 408f)
     val MENU_LEVELS = floatArrayOf(50f, 424f, 310f, 476f)
-    const val MENU_SOUND_X = 144f
+    const val MENU_SOUND_X = 180f
     const val MENU_SOUND_Y = 530f
-    const val MENU_GIFT_X = 72f
-    const val MENU_HELP_X = 216f
-    const val MENU_EXIT_X = 288f
+    const val MENU_GIFT_X = 108f
+    const val MENU_HELP_X = 252f
     const val MENU_ROUND_R = 25f
     const val MENU_GEAR_X = 38f
     const val MENU_GEAR_Y = 40f
@@ -51,15 +47,18 @@ object Layout {
     // окно «что это за подсказка»
     val INFO_CARD = floatArrayOf(24f, 130f, 336f, 504f)
     val INFO_OK = floatArrayOf(80f, 446f, 280f, 490f)
-    /** Строка подсказки в игре: базовая линия текста и центр значка «i». */
-    const val HINT_Y = 70f
+    /** Окно подсказки в игре (всплывающая карточка под шапкой): рамка, текст в одну-две строки, значок «i» справа. */
+    const val HINT_X0 = 12f
+    const val HINT_X1 = 348f
+    const val HINT_TOP = 64f
+    const val HINT_H1 = 32f
+    const val HINT_H2 = 42f
+    const val HINT_SIZE = 13f
+    const val HINT_TEXT_X = 62f
+    const val HINT_TEXT_W = 274f
+    const val HINT_INFO_X = 328f
 
     // кнопки HUD
-    // кнопки верхней панели в игре (меньше обычных: слева крестик и звук, справа заново)
-    const val G_R = 18f
-    const val G_EXIT_X = 28f
-    const val G_SND_X = 68f
-    const val G_RST_X = 332f
     const val HUD_L_X = 38f
     const val HUD_R_X = 322f
     const val HUD_Y = 40f
@@ -111,5 +110,7 @@ class Ui {
     /** Сообщение в меню (подарок и т. п.) и время его появления. */
     var menuMsg = ""
     var menuMsgAt = -100f
+    /** Время (по ui.clock), когда открыто меню: от него идут анимации появления. */
+    var menuAt = 0f
     fun pr(id: Int) = if (pressId == id) press else 0f
 }
