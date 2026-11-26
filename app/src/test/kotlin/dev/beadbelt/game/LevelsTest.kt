@@ -70,19 +70,36 @@ class LevelsTest {
     }
 
     @Test
-    fun linksAppearFromLevel41AndTeachingLinksAreInFront() {
+    fun linksAppearFromTheirLessonAndTeachingLinksAreInFront() {
+        val at = Lessons.all[LS_LINKS].level
         for (l in all) {
             val pairs = l.columns.flatten().count { it.arrow != 0 }
-            if (l.id <= 40) assertEquals("уровень ${l.id}: связей быть не должно", 0, pairs)
+            if (l.id < at) assertEquals("уровень ${l.id}: связей быть не должно", 0, pairs)
             else assertTrue("уровень ${l.id}: нет связей", pairs >= 1)
         }
-        for (l in all.filter { it.id in 41..60 }) {
+        for (l in all.filter { it.id in at until at + 6 }) {
             val g = Game(l) { _, _ -> }
             val active = g.cols.indices.count { i ->
                 val h = g.cols[i][0]
                 Links.follower(h.arrow, h.pid, i, g.cols.size) { c -> g.cols[c].firstOrNull()?.pid ?: 0 } >= 0
             }
             assertTrue("уровень ${l.id}: учебная связь должна стоять впереди", active >= 1)
+        }
+    }
+
+    /** Скрытый цвет: первый лоток колонки всегда виден, до урока скрытых нет, после урока есть всегда. */
+    @Test
+    fun hiddenTraysFollowTheirLesson() {
+        val at = Lessons.all[LS_HIDDEN].level
+        for (l in all) {
+            var hidden = 0
+            l.columns.forEach { col -> col.forEachIndexed { i, t -> if (t.hidden) { hidden++; assertTrue("уровень ${l.id}: скрыт первый лоток", i > 0) } } }
+            if (l.id < at) assertEquals("уровень ${l.id}: скрытые лотки раньше урока", 0, hidden)
+            else assertTrue("уровень ${l.id}: нет скрытых лотков", hidden >= 2)
+            if (l.id == at) {
+                assertEquals(2, hidden)
+                assertTrue("на учебном уровне скрыты вторые лотки", l.columns[0][1].hidden && l.columns[1][1].hidden)
+            }
         }
     }
 
@@ -140,18 +157,34 @@ class LevelsTest {
 
     @Test
     fun generationIsDeterministic() {
-        fun sig(l: Level) = l.columns.joinToString("|") { c -> c.joinToString(",") { "${it.c}.${it.n}.${it.arrow}.${it.pid}" } } + "#" + l.boxes.joinToString() + "#" + l.elevator
+        fun sig(l: Level) = l.columns.joinToString("|") { c -> c.joinToString(",") { "${it.c}.${it.n}.${it.arrow}.${it.pid}.${it.hidden}" } } + "#" + l.boxes.joinToString() + "#" + l.elevator
         for (id in 1..LEVEL_COUNT) assertEquals("уровень $id", sig(Levels.make(id)), sig(Levels.make(id)))
     }
 
+    /**
+     * Кривая сложности рассчитана на 500 уровней, поэтому в первых 50 она растёт очень плавно:
+     * ничего не уменьшается, ступеньки по одному параметру за раз, лифт и связи только после своих уроков.
+     */
     @Test
-    fun progressionHasFiveChapters() {
-        assertEquals(500, LEVEL_COUNT)
-        assertTrue(all.filter { it.id in 1..40 }.all { it.elevator < 0 })
-        assertTrue(all.filter { it.id in 121..200 }.all { it.boxes.size == 32 && it.columns.flatten().count { t -> t.arrow != 0 } == 2 })
-        assertTrue(all.filter { it.id in 201..330 }.all { it.boxes.size == 40 })
-        assertTrue(all.filter { it.id > 330 }.all { it.boxes.size == 48 })
-        assertTrue(all.filter { it.id > 120 && it.id % 2 == 0 }.all { it.elevator >= 0 })
+    fun difficultyCurveIsGentleAndMonotonic() {
+        assertEquals(50, LEVEL_COUNT)
+        var prev = Levels.spec(1)
+        for (id in 2..500) {
+            val s = Levels.spec(id)
+            assertTrue("уровень $id: цветов меньше", s.colors >= prev.colors)
+            assertTrue("уровень $id: коробок на цвет меньше", s.perColor >= prev.perColor)
+            assertTrue("уровень $id: пар меньше", s.pairs >= prev.pairs)
+            assertTrue("уровень $id: скрытых меньше", s.hiddenShare >= prev.hiddenShare)
+            val jumps = (if (s.colors != prev.colors) 1 else 0) + (if (s.perColor != prev.perColor) 1 else 0) + (if (s.pairs != prev.pairs) 1 else 0)
+            assertTrue("уровень $id: несколько ступенек сразу", jumps <= 1)
+            prev = s
+        }
+        assertEquals(COLOR_COUNT, Levels.spec(500).colors)
+        assertEquals(6, Levels.spec(500).perColor)
+        assertEquals(4, Levels.spec(500).pairs)
+        assertTrue("к 50-му уровню ещё далеко до максимума", Levels.spec(50).colors <= 5 && Levels.spec(50).perColor <= 3 && Levels.spec(50).pairs <= 1)
+        assertTrue(all.filter { it.id < Lessons.all[LS_LIFT].level }.all { it.elevator < 0 })
+        assertTrue(all.filter { it.id == Lessons.all[LS_LIFT].level }.all { it.elevator >= 0 })
         assertTrue("цвета на разных уровнях различаются", all.map { it.boxes.toSet() }.toSet().size > 5)
     }
 
@@ -163,17 +196,5 @@ class LevelsTest {
             game.update(1f / 60f)
             for (b in game.hopper) assertTrue("шарик вне воронки: ${b.x}, ${b.y}", b.x in 0f..360f && b.y < 345f)
         }
-    }
-
-    @Test
-    fun rocketAndReturnKeepMarbleCountsConsistent() {
-        val game = Game(all[11]) { _, _ -> }
-        repeat(30) { i -> if (i % 3 == 0) game.tapColumn(i / 3 % game.cols.size); repeat(20) { game.update(1f / 60f) } }
-        val before = game.occupied
-        if (before > 0 && game.state == State.PLAY) assertTrue(game.returnMarbles())
-        repeat(120) { game.update(1f / 60f) }
-        game.useRocket()
-        repeat(180) { game.update(1f / 60f) }
-        assertTrue(game.done >= 0 && game.occupied <= game.n)
     }
 }

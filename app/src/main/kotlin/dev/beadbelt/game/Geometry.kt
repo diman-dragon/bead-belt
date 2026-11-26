@@ -18,17 +18,15 @@ const val BODY_R = 8.5f      // радиус шарика в воронке
  */
 const val LIFT = 34f
 
-// кнопки бустеров (нужны и игре — для следа ракеты, и интерфейсу)
-const val ROCKET_X = 44f
-const val RETURN_X = 316f
-const val BOOST_Y = 614f
+// нижний ряд помощников
+const val BOOST_Y = 612f
 
 const val EV_TAP = 0
 const val EV_PICK = 1
 const val EV_POP = 2
 const val EV_WIN = 3
 const val EV_LOSE = 4
-const val EV_ROCKET = 5
+const val EV_AID = 5         // сработал помощник (отмена, очистка, перемешивание, «ещё шанс»)
 const val EV_UNLOCK = 6
 const val EV_CLINK = 7      // удар шариков друг о друга / о стекло; arg — сила 0..7
 

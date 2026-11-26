@@ -78,7 +78,7 @@ class Sound(context: Context) {
             EV_TAP -> play(I_TAP, 1f, 0.7f)
             EV_POP -> play(I_POP)
             EV_WIN -> play(I_WIN)
-            EV_ROCKET -> play(I_ROCKET, 1f, 0.8f)
+            EV_AID -> play(I_ROCKET, 1f, 0.8f)
             EV_UNLOCK -> play(I_UNLOCK)
             EV_CLINK -> play(I_CLINK, 0.85f + arg * 0.07f, 0.18f + arg * 0.05f, 0)    // сильнее удар — выше и громче
             else -> play(I_LOSE)

@@ -48,7 +48,7 @@ class GameplayTest {
 
     @Test
     fun hopperHandlesManyMarblesFast() {
-        val game = Game(LevelCache.get(100)) { _, _ -> }
+        val game = Game(LevelCache.get(50)) { _, _ -> }
         repeat(8) { game.tapColumn(it % game.cols.size) }
         val t0 = System.nanoTime()
         repeat(60 * 6) { game.update(1f / 60f) }
@@ -84,7 +84,7 @@ class GameplayTest {
     @Test
     fun physicsIsStableOnAnyRefreshRate() {
         for (hz in intArrayOf(30, 60, 90, 120, 144)) {
-            val game = Game(LevelCache.get(60)) { _, _ -> }
+            val game = Game(LevelCache.get(50)) { _, _ -> }
             repeat(10) { game.tapColumn(it % game.cols.size) }
             repeat(hz * 8) { game.update(1f / hz) }
             for (b in game.hopper) assertTrue("$hz Гц: шарик вне воронки ${b.x},${b.y}", b.x in 0f..360f && b.y < 345f && !b.vx.isNaN() && !b.vy.isNaN())

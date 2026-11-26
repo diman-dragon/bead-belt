@@ -18,7 +18,7 @@ class Advice(val kind: Int, val col: Int = -1) {
 object Hints {
     /** Живая партия → модель (доска + состояние). Шарики в воронке и очереди считаются уже лежащими на ленте. */
     fun snapshot(g: Game): Pair<Board, PState> {
-        val cols = g.cols.map { col -> col.map { TrayDef(it.c, it.n, it.arrow, it.pid) } }
+        val cols = g.cols.map { col -> col.map { TrayDef(it.c, it.n, it.arrow, it.pid, it.hidden) } }
         val stacks = ArrayList<IntArray>(SLOTS)
         val actN = IntArray(SLOTS)
         for (i in 0 until SLOTS) {
@@ -44,7 +44,7 @@ object Hints {
      * Только тогда совет точен: пока шарики в пути, неизвестно, кому они достанутся.
      */
     fun calm(g: Game): Boolean {
-        if (!(g.spawnQ.isEmpty() && g.hopper.isEmpty() && g.flyers.isEmpty() && g.rockets.isEmpty())) return false
+        if (!(g.spawnQ.isEmpty() && g.hopper.isEmpty() && g.flyers.isEmpty())) return false
         for (c in g.slots) {
             if (c < 0) continue
             for (b in g.boxes) if (b != null && b.c == c && !b.locked && b.committed < BOX) return false

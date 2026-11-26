@@ -8,6 +8,8 @@
 
 **Short description:** Tap trays, ride the belt, fill the boxes. A calm color-sorting puzzle.  *(≈78)*
 
+*Play требует отметки «Содержит рекламу» и «Покупки в приложении» (см. docs/MONETIZATION.md).*
+
 **Full description:**
 
 Bead Belt is a relaxing one-tap puzzle about timing and planning.
@@ -19,7 +21,9 @@ But the belt only holds so many beads. Choose the order of your trays carefully:
 • One-tap controls: easy to start, satisfying to master
 • Smooth bead physics and a hypnotic conveyor
 • Shape marks on every bead, so colors are readable for everyone
-• Works fully offline, no ads, no accounts, no tracking
+• Four helpers: hint, undo, shuffle and clear the belt
+• Hidden colors, linked trays and locked boxes: new twists, introduced one lesson at a time
+• Plays offline. Contains ads (mostly optional rewarded videos) and in-app purchases
 
 ## Русский
 
@@ -38,4 +42,6 @@ Bead Belt — спокойная головоломка в одно касани
 • Управление одним касанием: легко начать, приятно осваивать
 • Плавное движение и гипнотический конвейер
 • На каждом шарике есть значок формы, поэтому цвета различимы всеми
-• Работает без интернета, без рекламы, без аккаунтов и слежки
+• Четыре помощника: подсказка, отмена хода, перемешать и очистить ленту
+• Скрытые цвета, связанные лотки и коробки с замком: новинки вводятся по одной, с объяснением
+• Играть можно без интернета. Есть реклама (в основном видео за награду по желанию) и покупки в приложении

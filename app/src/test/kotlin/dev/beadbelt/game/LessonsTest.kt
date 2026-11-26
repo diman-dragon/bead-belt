@@ -23,15 +23,14 @@ class LessonsTest {
     }
 
     @Test
-    fun lessonTableIsOrderedAndComplete() {
-        assertEquals(6, Lessons.all.size)
+    fun lessonTableIsOrderedAndFitsIntoTheFirstFiftyLevels() {
+        assertEquals(8, Lessons.all.size)
         Lessons.all.forEachIndexed { i, l -> assertEquals("номер урока $i", i, l.id) }
         assertTrue("уровни уроков растут", Lessons.all.zipWithNext().all { (a, b) -> a.level < b.level })
-        assertTrue(Lessons.all.all { it.level in 1..LEVEL_COUNT })
+        assertTrue("все уроки в пределах игры", Lessons.all.all { it.level in 1..LEVEL_COUNT })
         assertEquals(1, Lessons.all.first().level)
         for (l in Lessons.all) {
-            val p = l.prize
-            assertTrue("урок ${l.id}: приз пуст", p.coins + p.rockets + p.returns + p.hints > 0)
+            assertTrue("урок ${l.id}: приз пуст", l.prize.total > 0)
             assertEquals(l, Lessons.atLevel(l.level))
         }
         assertEquals(null, Lessons.atLevel(2))
@@ -39,27 +38,32 @@ class LessonsTest {
 
     @Test
     fun everyHelperIsOpenedByItsOwnLessonAndRewardsItself() {
-        assertTrue(Lessons.forAid(AID_ROCKET).prize.rockets > 0)
-        assertTrue(Lessons.forAid(AID_RETURN).prize.returns > 0)
-        assertTrue(Lessons.forAid(AID_HINT).prize.hints > 0)
-        for (aid in intArrayOf(AID_ROCKET, AID_RETURN, AID_HINT)) assertEquals(aid, Lessons.forAid(aid).aid)
+        assertEquals(AID_COUNT, Lessons.all.count { it.aid >= 0 })
+        for (aid in 0 until AID_COUNT) {
+            val l = Lessons.forAid(aid)
+            assertEquals(aid, l.aid)
+            assertTrue("приз за урок помощника $aid должен включать его самого", l.prize.aids[aid] > 0)
+        }
     }
 
-    /** Связь и лифт появляются ровно на уровне своего урока и не раньше. */
+    /** Каждая механика появляется ровно на уровне своего урока и не раньше. */
     @Test
-    fun linksAndLiftAppearExactlyAtTheirLessons() {
-        val links = Lessons.all[LS_LINKS].level; val lift = Lessons.all[LS_LIFT].level
+    fun mechanicsAppearExactlyAtTheirLessons() {
+        val links = Lessons.all[LS_LINKS].level; val lift = Lessons.all[LS_LIFT].level; val hid = Lessons.all[LS_HIDDEN].level
         for (id in 1..LEVEL_COUNT) {
             val l = Levels.make(id)
             val hasLink = l.columns.flatten().any { it.pid != 0 }
+            val hasHidden = l.columns.flatten().any { it.hidden }
             if (id < links) assertTrue("уровень $id: связь раньше урока", !hasLink)
             if (id == links) assertTrue("на уровне урока должна быть связь", hasLink)
             if (id < lift) assertTrue("уровень $id: лифт раньше урока", l.elevator < 0)
             if (id == lift) assertTrue("на уровне урока должен быть лифт", l.elevator >= 0)
+            if (id < hid) assertTrue("уровень $id: скрытый цвет раньше урока", !hasHidden)
+            if (id == hid) assertTrue("на уровне урока должен быть скрытый цвет", hasHidden)
         }
-        // помощники объясняются раньше связей
-        assertTrue(Lessons.all[LS_BULB].level < Lessons.all[LS_ROCKET].level && Lessons.all[LS_ROCKET].level < Lessons.all[LS_RETURN].level)
-        assertTrue(Lessons.all[LS_RETURN].level < links && links < lift)
+        // сначала помощники, потом новые правила поля
+        val aidsEnd = Lessons.all.filter { it.aid >= 0 }.maxOf { it.level }
+        assertTrue(aidsEnd < hid && hid < links && links < lift)
     }
 
     @Test
@@ -70,7 +74,7 @@ class LessonsTest {
         assertEquals(Levels.beltOf(2), Levels.make(2).belt)
     }
 
-    /** Учебные уровни проходимы (с лентой побольше) при подсказках: не реже 28 из 30. */
+    /** Учебные уровни проходимы при подсказках: не реже 28 из 30. */
     @Test
     fun trainingLevelsAreWinnable() {
         for (l in Lessons.all) {
@@ -79,7 +83,6 @@ class LessonsTest {
         }
     }
 
-    /** На учебном уровне про связь первая пара стоит впереди, и ведущий действительно один. */
     @Test
     fun linkLessonLevelShowsAnActiveLinkFromTheStart() {
         val l = Levels.make(Lessons.all[LS_LINKS].level)

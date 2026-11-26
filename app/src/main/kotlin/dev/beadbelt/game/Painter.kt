@@ -253,29 +253,58 @@ class Painter(val a: Assets, val sw: Float, val sh: Float) {
         p.style = Paint.Style.STROKE; p.strokeWidth = 2f; p.strokeJoin = Paint.Join.ROUND; p.color = Theme.alpha(Theme.BLACK, 60); cv.drawPath(path, p)
     }
 
-    /** Ракета носом вверх, центр в (0,0). */
-    private fun vecRocket(cv: Canvas, sc: Float, flame: Boolean) {
-        p.style = Paint.Style.FILL; p.shader = null
-        if (flame) {
-            p.color = 0xFFFF7A1F.toInt(); path.reset(); path.moveTo(-5f * sc, 9f * sc); path.lineTo(0f, 24f * sc); path.lineTo(5f * sc, 9f * sc); path.close(); cv.drawPath(path, p)
-            p.color = 0xFFFFE27A.toInt(); path.reset(); path.moveTo(-2.5f * sc, 9f * sc); path.lineTo(0f, 17f * sc); path.lineTo(2.5f * sc, 9f * sc); path.close(); cv.drawPath(path, p)
-        }
-        p.color = 0xFFFF2D4A.toInt()
-        path.reset(); path.moveTo(-6f * sc, 4f * sc); path.lineTo(-12f * sc, 13f * sc); path.lineTo(-6f * sc, 10f * sc); path.close(); cv.drawPath(path, p)
-        path.reset(); path.moveTo(6f * sc, 4f * sc); path.lineTo(12f * sc, 13f * sc); path.lineTo(6f * sc, 10f * sc); path.close(); cv.drawPath(path, p)
-        p.color = 0xFFEEF2FF.toInt(); rect.set(-6.5f * sc, -13f * sc, 6.5f * sc, 11f * sc); cv.drawRoundRect(rect, 6.5f * sc, 6.5f * sc, p)
-        p.color = 0xFFC3CCEA.toInt(); rect.set(1.5f * sc, -11f * sc, 6.5f * sc, 10f * sc); cv.drawRoundRect(rect, 3f * sc, 3f * sc, p)
-        p.color = 0xFFFF2D4A.toInt(); path.reset(); path.moveTo(0f, -19f * sc); path.lineTo(-6.5f * sc, -8f * sc); path.lineTo(6.5f * sc, -8f * sc); path.close(); cv.drawPath(path, p)
-        p.color = 0xFF2F6BFF.toInt(); cv.drawCircle(0f, -2f * sc, 3.4f * sc, p)
-        p.color = Theme.alpha(Theme.WHITE, 200); cv.drawCircle(-0.9f * sc, -3f * sc, 1f * sc, p)
+    /** Контур значка: мягкая тень снизу и цветная линия поверх, чтобы читалось на любой кнопке. */
+    private fun strokeGlyph(cv: Canvas, color: Int, w: Float) {
+        p.style = Paint.Style.STROKE; p.shader = null; p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND
+        p.strokeWidth = w; p.color = Theme.alpha(Theme.BLACK, 90)
+        cv.save(); cv.translate(0f, 1.3f); cv.drawPath(path, p); cv.restore()
+        p.color = color; cv.drawPath(path, p)
+        p.strokeCap = Paint.Cap.BUTT
     }
 
-    private fun vecReturnIcon(cv: Canvas) {
-        p.style = Paint.Style.STROKE; p.strokeWidth = 3.4f; p.strokeCap = Paint.Cap.ROUND; p.color = Theme.WHITE; p.shader = null
-        rect.set(-9f, -6f, 9f, 12f); cv.drawArc(rect, 200f, 260f, false, p)
-        p.style = Paint.Style.FILL
-        path.reset(); path.moveTo(-14f, -4f); path.lineTo(-4f, -5f); path.lineTo(-9f, -13f); path.close(); cv.drawPath(path, p)
+    private fun fillGlyph(cv: Canvas, color: Int) {
+        p.style = Paint.Style.FILL; p.shader = null
+        p.color = Theme.alpha(Theme.BLACK, 90)
+        cv.save(); cv.translate(0f, 1.3f); cv.drawPath(path, p); cv.restore()
+        p.color = color; cv.drawPath(path, p)
+    }
+
+    /** Треугольник-наконечник: кончик (tx, ty), основание на расстоянии `len` назад вдоль (dx, dy) шириной ±half. */
+    private fun head(tx: Float, ty: Float, dx: Float, dy: Float, len: Float, half: Float) {
+        val bx = tx - dx * len; val by = ty - dy * len
+        path.reset(); path.moveTo(tx, ty); path.lineTo(bx - dy * half, by + dx * half); path.lineTo(bx + dy * half, by - dx * half); path.close()
+    }
+
+    /** «Отменить»: круговая стрелка против часовой, центр в (0,0). */
+    private fun vecUndo(cv: Canvas) {
+        val col = 0xFF7FD1FF.toInt()
+        rect.set(-9f, -8f, 9f, 10f)                                   // окружность радиуса 9 с центром (0, 1)
+        path.reset(); path.arcTo(rect, 200f, 250f); strokeGlyph(cv, col, 3.6f)
+        val a = Math.toRadians(200.0)
+        val px = (9.0 * cos(a)).toFloat(); val py = (1.0 + 9.0 * sin(a)).toFloat()
+        val dx = sin(a).toFloat(); val dy = (-cos(a)).toFloat()       // направление против часовой стрелки
+        head(px + dx * 5.5f, py + dy * 5.5f, dx, dy, 6.5f, 5f); fillGlyph(cv, col)
+    }
+
+    /** «Перемешать»: две пересекающиеся стрелки, центр в (0,0). */
+    private fun vecShuffle(cv: Canvas) {
+        val col = 0xFFD4B2FF.toInt()
+        path.reset(); path.moveTo(-11f, 5f); path.lineTo(-4f, 5f); path.lineTo(4f, -5f); path.lineTo(7f, -5f); strokeGlyph(cv, col, 3.4f)
+        path.reset(); path.moveTo(-11f, -5f); path.lineTo(-4f, -5f); path.lineTo(4f, 5f); path.lineTo(7f, 5f); strokeGlyph(cv, col, 3.4f)
+        head(13f, -5f, 1f, 0f, 6f, 4.6f); fillGlyph(cv, col)
+        head(13f, 5f, 1f, 0f, 6f, 4.6f); fillGlyph(cv, col)
+    }
+
+    /** «Очистить ленту»: метла со звёздочкой, центр в (0,0). */
+    private fun vecClear(cv: Canvas) {
+        val col = 0xFF6EE7B7.toInt()
+        path.reset(); path.moveTo(10f, -12f); path.lineTo(1.5f, 0.5f); strokeGlyph(cv, col, 3.6f)                    // ручка
+        path.reset(); path.moveTo(-1f, -0.5f); path.lineTo(5.5f, 4f); path.lineTo(-3f, 13f); path.lineTo(-11f, 9f); path.close(); fillGlyph(cv, col)   // щётка
+        p.style = Paint.Style.STROKE; p.strokeWidth = 1.5f; p.strokeCap = Paint.Cap.ROUND; p.color = Theme.alpha(Theme.BLACK, 110)
+        cv.drawLine(-4f, 5f, -7f, 10.5f, p); cv.drawLine(0.5f, 6.5f, -3f, 11.5f, p)
         p.strokeCap = Paint.Cap.BUTT
+        p.style = Paint.Style.FILL; p.color = Theme.WHITE                                                            // блеск чистоты
+        path.reset(); path.moveTo(10f, 3f); path.quadTo(10f, 6f, 13f, 6f); path.quadTo(10f, 6f, 10f, 9f); path.quadTo(10f, 6f, 7f, 6f); path.quadTo(10f, 6f, 10f, 3f); cv.drawPath(path, p)
     }
 
     /** Лампочка (подсказка), центр в (0,0). */
@@ -370,14 +399,14 @@ class Painter(val a: Assets, val sw: Float, val sh: Float) {
     private val icSpeakerOff = bake(18f, 14f) { vecSpeaker(it, 0f, 0f, false) }
     private val icRestart = bake(17f, 17f) { vecRestart(it, 0f, 0f) }
     private val icBack = bake(10f, 12f) { vecBack(it, 0f, 0f) }
-    private val icReturn = bake(17f, 17f) { vecReturnIcon(it) }
+    private val icUndo = bake(15f, 15f) { vecUndo(it) }
+    private val icShuffle = bake(16f, 14f) { vecShuffle(it) }
+    private val icClear = bake(15f, 16f) { vecClear(it) }
     private val icBulb = bake(14f, 18f) { vecBulb(it) }
     private val icGift = bake(16f, 17f) { vecGift(it) }
     private val icLock = bake(16f, 24f) { vecLock(it, 0f, 0f, 1f) }
     private val icCheck = bake(12f, 10f) { vecCheck(it, 0f, 0f, 1f, Theme.WHITE) }
     private val icCoin = bake(18f, 18f) { vecCoin(it, 0f, 0f, 16f) }
-    private val icRocket = bake(18f, 33f) { vecRocket(it, 1.3f, false) }
-    private val icRocketFlame = bake(18f, 33f) { vecRocket(it, 1.3f, true) }
     private val icLinkR = bake(18f, 16f) { vecLink(it, true) }
     private val icLinkL = bake(18f, 16f) { vecLink(it, false) }
     private val icGlint = bake(10f, 10f) { c ->
@@ -409,14 +438,14 @@ class Painter(val a: Assets, val sw: Float, val sh: Float) {
     fun speaker(cv: Canvas, x: Float, y: Float, on: Boolean) = put(cv, if (on) icSpeakerOn else icSpeakerOff, x, y)
     fun restart(cv: Canvas, x: Float, y: Float) = put(cv, icRestart, x, y)
     fun back(cv: Canvas, x: Float, y: Float) = put(cv, icBack, x, y)
-    fun returnIcon(cv: Canvas) = put(cv, icReturn, 0f, 0f)
+    fun undo(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icUndo, x, y, sc)
+    fun shuffle(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icShuffle, x, y, sc)
+    fun clear(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icClear, x, y, sc)
     fun bulb(cv: Canvas, x: Float, y: Float, sc: Float = 1f, alpha: Int = 255) = put(cv, icBulb, x, y, sc, alpha)
     fun gift(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icGift, x, y, sc)
     fun lock(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icLock, x, y, sc)
     fun check(cv: Canvas, x: Float, y: Float, sc: Float, color: Int) = put(cv, icCheck, x, y, sc, color ushr 24)
     fun coin(cv: Canvas, x: Float, y: Float, r: Float) = put(cv, icCoin, x, y, r / 16f)
-    /** Ракета носом вверх, центр в (0,0); sc = 1 — обычный размер. */
-    fun rocket(cv: Canvas, sc: Float, flame: Boolean) = put(cv, if (flame) icRocketFlame else icRocket, 0f, 0f, sc / 1.3f)
     /** Гнездо ленты радиусом r. */
     fun pocket(cv: Canvas, x: Float, y: Float, r: Float) {
         val h = r * 15f / 14f

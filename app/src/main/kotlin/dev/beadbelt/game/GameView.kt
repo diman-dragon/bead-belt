@@ -1,6 +1,7 @@
 package dev.beadbelt.game
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.view.Choreographer
@@ -14,14 +15,14 @@ import kotlin.math.min
 
 private const val BTN_BLOCK = -1     // нажатие поглощено (диалог, пауза), но действия нет
 private const val SPLASH_LEN = 3.1f     // сколько секунд длится заставка
-private const val VERSION_FALLBACK = "0.9.2"
+private const val VERSION_FALLBACK = "0.9.3"
 
 /**
  * Вид игры: цикл кадров, ввод и переходы между экранами.
  * Рисование вынесено в [GameRenderer] и [Screens], тяжёлая графика запекается в [Assets].
  */
 class GameView(context: Context) : View(context) {
-    private enum class Screen { SPLASH, MENU, LEVELS, PLAY, HELP, SETTINGS }
+    private enum class Screen { SPLASH, MENU, LEVELS, PLAY, HELP, SETTINGS, SHOP }
 
     private val progress = Progress(context).also { Lang.set(it.langMode); Theme.dark = it.darkTheme }
     private val sound = Sound(context).also { it.enabled = progress.sound }
@@ -32,8 +33,7 @@ class GameView(context: Context) : View(context) {
 
     private var screen = Screen.SPLASH
     private var splashT = 0f
-    private var hintInfo = ""          // пояснение к текущей подсказке (окно по значку «i»)
-    private var infoOpen = false
+    private var infoOpen = false       // открыта карточка урока
     private var viewW = 0
     private var viewH = 0
     private var game: Game? = null
@@ -41,13 +41,21 @@ class GameView(context: Context) : View(context) {
     private var reward = 0
     private var paused = false
     private var fade = 0f
-    private var hint = ""
-    private var hintAt = 0f
     private var stars = 0
     private var hintsUsed = 0          // подсказки, взятые на этом уровне (влияют на звёзды)
     private var idle = 0f              // сколько секунд игрок ничего не нажимал
-    private var idleTipShown = false
-    private var fullTipShown = false
+
+    // реклама и покупки: в отладочных сборках — тестовые заглушки, в релизе — то, что подключено в [Monetization]
+    private val debuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+    private val ads: Ads = Monetization.ads(debuggable).also { it.load() }
+    private val billing: Billing = Monetization.billing(debuggable)
+    private val simAds = ads as? SimAds
+    private var simAdT = 0f            // сколько секунд показывается тестовая заглушка
+    private var busy = false           // идёт показ рекламы или оплата: повторные нажатия игнорируются
+    private var winsSinceAd = 0        // побед с последней рекламы между уровнями
+    private var lastAdMs = System.currentTimeMillis()   // время последней рекламы любого вида
+    private var doubled = false        // награда за этот уровень уже удвоена видео
+    private var shopFrom = Screen.MENU // откуда открыт магазин (туда вернёмся)
 
     // урок текущего уровня (null — обычный уровень или урок уже пройден)
     private var lesson: Lesson? = null
@@ -124,31 +132,26 @@ class GameView(context: Context) : View(context) {
             ui.scroll = (ui.scroll + flingV * dt).coerceIn(0f, Layout.maxScroll())
             flingV *= exp(-3.2f * dt)
         }
+        val sa = simAds
+        if (sa != null && sa.pending != null) simAdT += dt else simAdT = 0f
+        if (ui.nudgeT > 0f) { ui.nudgeT -= dt; if (ui.nudgeT <= 0f) ui.nudgeAid = -1 }
         val g = game
-        if (screen == Screen.PLAY && g != null && !paused && !infoOpen) {
+        if (screen == Screen.PLAY && g != null && !paused && !infoOpen && sa?.pending == null) {
             g.update(dt)
             if (g.state != State.PLAY) ui.endT += dt else tutorialTick(g, dt)
         }
     }
 
-    /** Подсказки по ходу игры: указатель гаснет сам; если игрок завис или лента почти полна — мягкий совет. */
+    /** Ведение игрока: указатель на лоток гаснет сам; на первых уровнях и на учебных уровнях подсказывает пальцем. Текстовых подсказок в игре нет. */
     private fun tutorialTick(g: Game, dt: Float) {
         if (ui.hintT > 0f) { ui.hintT -= dt; if (ui.hintT <= 0f) ui.hintCol = -1 }
         idle += dt
-        val quiet = hint.isEmpty() || ui.clock - hintAt > 6f
         val ls = lesson
-        if (ls != null) { lessonTick(g, ls, quiet); return }        // на учебном уровне остальные советы молчат
-        if (current <= 2 && idle > 3.5f && ui.hintCol < 0 && Hints.calm(g)) {   // самые первые уровни: сразу показываем пальцем
+        if (ls != null) { lessonTick(g, ls); return }
+        if (current <= 2 && idle > 3.5f && ui.hintCol < 0 && Hints.calm(g)) {   // самые первые уровни: показываем пальцем
             val a = Hints.advise(g, 5_000)
             if (a.kind == Advice.TAP) point(a.col)
             idle = 0f
-        } else if (!idleTipShown && idle > 14f && quiet && progress.lessonDone(LS_BULB)) {
-            idleTipShown = true; say(tr("Не знаешь, что нажать? Лампочка покажет ход", "Not sure what to tap? The bulb shows a move"), bulbInfo())
-        }
-        if (!fullTipShown && quiet && g.n - g.occupied <= 1) {
-            fullTipShown = true
-            if (progress.lessonDone(LS_RETURN)) say(tr("Лента почти полна! Поможет лампочка или «Вернуть»", "The belt is almost full! Try the bulb or Return"), fullInfo())
-            else say(tr("Лента почти полна! Сыпь только то, что нужно коробкам", "The belt is almost full! Pour only what the boxes need"), "")
         }
     }
 
@@ -170,12 +173,10 @@ class GameView(context: Context) : View(context) {
         infoOpen = true
     }
 
-    /** Урок усвоен: убираем подсветку и хвалим (silent — когда игра уже сказала своё). */
-    private fun lessonPassed(silent: Boolean = false) {
-        val ls = lesson ?: return
-        if (lessonOk) return
+    /** Урок усвоен: убираем подсветку. */
+    private fun lessonPassed() {
+        if (lesson == null || lessonOk) return
         lessonOk = true; ui.focusAid = -1; ui.hintCol = -1
-        if (!silent) say(LessonText.praise(ls))
     }
 
     /** Игрок нажал на лоток: `launched` — сколько лотков высыпалось этим нажатием. */
@@ -185,11 +186,11 @@ class GameView(context: Context) : View(context) {
         if (ls.id == LS_BASICS || (ls.id == LS_LINKS && launched >= 2)) lessonPassed()
     }
 
-    /** Пока урок не усвоен: напоминает задание и показывает пальцем, что нажать. */
-    private fun lessonTick(g: Game, ls: Lesson, quiet: Boolean) {
+    /** Пока урок не усвоен, указывает пальцем, что нажать (для помощников подсвечена сама кнопка). */
+    private fun lessonTick(g: Game, ls: Lesson) {
         if (ls.id == LS_LIFT && g.elevatorIsOpen) lessonPassed()
-        if (ls.id == LS_LINKS && !lessonOk && linkLeader(g) < 0) lessonPassed(silent = true)   // связи уже нет: нажать нечего
-        if (!lessonOk && quiet) say(LessonText.task(ls))
+        if (ls.id == LS_HIDDEN && g.cols.any { it.firstOrNull()?.hidden == true }) lessonPassed()      // скрытый лоток вышел вперёд
+        if (ls.id == LS_LINKS && !lessonOk && linkLeader(g) < 0) lessonPassed()                       // связи уже нет: нажать нечего
         if (ui.hintCol >= 0 || !Hints.calm(g)) return
         when (ls.id) {
             LS_BASICS -> if (idle > (if (lessonOk) 3.5f else 1.2f)) {
@@ -198,28 +199,26 @@ class GameView(context: Context) : View(context) {
                 idle = 0f
             }
             LS_LINKS -> if (!lessonOk && idle > 0.8f) { val c = linkLeader(g); if (c >= 0) point(c); idle = 0f }
+            LS_HIDDEN -> if (!lessonOk && idle > 1.2f) {
+                val c = g.cols.indices.firstOrNull { g.cols[it].size > 1 && g.cols[it][1].hidden }
+                if (c != null) point(c)
+                idle = 0f
+            }
+            // отмене и очистке нужен ход: сначала показываем лоток, потом кнопка подсвечена кольцом
+            LS_UNDO, LS_CLEAR -> if (!lessonOk && idle > 1.2f && !(g.canUndo && ls.id == LS_UNDO) && !(g.canClear && ls.id == LS_CLEAR)) {
+                val a = Hints.advise(g, 5_000)
+                if (a.kind == Advice.TAP) point(a.col)
+                idle = 0f
+            }
         }
     }
 
-    private fun say(msg: String, info: String = "") { hint = msg; hintInfo = info; hintAt = ui.clock }
-
-    private fun hintAlphaNow() = if (hint.isEmpty()) 0f else (8f - (ui.clock - hintAt)).coerceIn(0f, 1f)
-
-    // пояснения, которые открываются по значку «i» рядом с подсказкой
-    private fun bulbInfo() = tr(
-        "Лампочка просчитывает партию и показывает, какой лоток нажать. Подсказки бесплатны, пока они есть, потом по ${Progress.HINT_PRICE} монет. Подсказки и бустеры влияют на звёзды: без помощи их три.",
-        "The bulb analyzes the position and points to the tray to tap. Hints are free while you have them, then ${Progress.HINT_PRICE} coins each. Hints and boosters affect stars: with no help you get three.")
-    private fun fullInfo() = tr(
-        "Конвейер вмещает ограниченное число шариков. Если он забьётся и ни одна коробка не подойдёт, уровень проигран. «Вернуть» снимает до 8 шариков с ленты и возвращает их в лотки.",
-        "The belt holds a limited number of beads. If it jams and no box matches, the level is lost. Return takes up to 8 beads off the belt and puts them back into trays.")
-
-    private fun openInfo() {
-        if (hint.isEmpty() || hintInfo.isEmpty()) return
-        screens?.prepareInfo(hint, hintInfo)
-        infoOpen = true
-    }
-
     private fun point(col: Int) { ui.hintCol = col; ui.hintT = 4.5f }
+
+    private fun now() = System.currentTimeMillis()
+
+    /** Короткое сообщение в строке магазина и меню. */
+    private fun notify(msg: String) { ui.menuMsg = msg; ui.menuMsgAt = ui.clock }
 
     private fun startLoop() {
         if (running || !isAttachedToWindow) return
@@ -249,7 +248,9 @@ class GameView(context: Context) : View(context) {
 
     /** Назад: из игры и списка — в меню. Из меню — выход из приложения. */
     fun onBack(): Boolean {
-        if (infoOpen) { infoOpen = false; hintAt = ui.clock; return true }
+        if (simAds?.pending != null) return true            // тестовую рекламу закрывают её кнопкой
+        if (infoOpen) { infoOpen = false; return true }
+        if (screen == Screen.SHOP) { closeShop(); return true }
         if (screen == Screen.MENU) return false
         go(Screen.MENU)
         return true
@@ -279,8 +280,8 @@ class GameView(context: Context) : View(context) {
         current = target
         ui.endT = 0f; reward = 0; paused = false
         val lv = LevelCache.get(current)
-        hint = ""; hintInfo = ""; infoOpen = false; hintAt = ui.clock; hintsUsed = 0; idle = 0f; idleTipShown = false; fullTipShown = false
-        stars = 0; ui.hintCol = -1; ui.hintT = 0f
+        infoOpen = false; hintsUsed = 0; idle = 0f; doubled = false
+        stars = 0; ui.hintCol = -1; ui.hintT = 0f; ui.nudgeAid = -1; ui.nudgeT = 0f
         // урок: новая механика появляется на своём уровне (карточка, тренировка, приз)
         lesson = Lessons.atLevel(current)?.takeIf { !progress.lessonDone(it.id) }
         lessonOk = false; freeUsed = 0; prizeText = ""
@@ -289,6 +290,7 @@ class GameView(context: Context) : View(context) {
             sound.event(ev, arg)
             if (ev == EV_WIN || ev == EV_LOSE) performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             if (ev == EV_WIN) {
+                winsSinceAd++
                 val usage = ((game?.assists ?: 0) + hintsUsed - freeUsed).coerceAtLeast(0)
                 stars = Progress.starsFor(usage)
                 reward = progress.win(current, usage)
@@ -305,9 +307,19 @@ class GameView(context: Context) : View(context) {
     /** Помощник открыт: урок пройден или это учебный уровень именно про него. */
     private fun boosterOn(aid: Int) = ui.freeAid == aid || progress.lessonDone(Lessons.forAid(aid).id)
 
+    private fun aidButtonId(aid: Int) = when (aid) { AID_UNDO -> BTN_UNDO; AID_SHUFFLE -> BTN_SHUFFLE; AID_CLEAR -> BTN_CLEAR; else -> BTN_HINT }
+
     private fun hit(x: Float, y: Float): Int {
+        val sa = simAds
+        if (sa != null && sa.pending != null) return if (simAdT >= 3f && Layout.inRect(Layout.AD_CLOSE, x, y)) BTN_AD_CLOSE else BTN_BLOCK
         when (screen) {
             Screen.SPLASH -> return BTN_NONE
+            Screen.SHOP -> {
+                if (Layout.inCircle(x, y, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R + 6f)) return BTN_BACK
+                if (Layout.inRect(Layout.SHOP_RESTORE, x, y)) return BTN_RESTORE
+                for (i in Layout.SHOP_ROWS.indices) if (Layout.inRect(Layout.SHOP_ROWS[i], x, y)) return BTN_SHOP_ITEM + i
+                return BTN_NONE
+            }
             Screen.SETTINGS -> {
                 if (Layout.inCircle(x, y, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R + 6f)) return BTN_BACK
                 for (i in 0..2) if (Layout.inRect(Layout.LANG_CHIPS[i], x, y)) return BTN_LANG + i
@@ -325,11 +337,14 @@ class GameView(context: Context) : View(context) {
                 Layout.inCircle(x, y, Layout.MENU_SOUND_X, Layout.MENU_SOUND_Y, 30f) -> BTN_SOUND
                 Layout.inCircle(x, y, Layout.MENU_GIFT_X, Layout.MENU_SOUND_Y, 30f) -> BTN_GIFT
                 Layout.inCircle(x, y, Layout.MENU_HELP_X, Layout.MENU_SOUND_Y, 30f) -> BTN_HELP
+                Layout.inCircle(x, y, Layout.MENU_SHOP_X, Layout.MENU_SOUND_Y, 30f) -> BTN_SHOP
+                Layout.inRect(Layout.MENU_COIN, x, y) -> BTN_SHOP
                 else -> BTN_NONE
             }
             Screen.HELP -> return if (Layout.inCircle(x, y, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R + 6f)) BTN_BACK else BTN_NONE
             Screen.LEVELS -> {
                 if (Layout.inCircle(x, y, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R + 6f)) return BTN_BACK
+                if (Layout.inRect(Layout.BAR_COIN, x, y)) return BTN_SHOP
                 if (y < Layout.LV_TOP || y > Layout.LV_BOTTOM) return BTN_NONE
                 val cell = Layout.LV_W + Layout.LV_GAP_X
                 val col = ((x - Layout.LV_X0) / cell).toInt()
@@ -347,20 +362,24 @@ class GameView(context: Context) : View(context) {
                 if (paused) return if (Layout.inRect(Layout.PAUSE_BTN, x, y)) BTN_RESUME else BTN_BLOCK
                 if (g.state != State.PLAY && ui.endT > 0.4f) {
                     if (ui.endT < 0.9f) return BTN_BLOCK
+                    val coinOk = progress.canRevive(); val adOk = ads.rewardedReady
+                    val canRev = g.state == State.LOST && g.canRevive()
                     return when {
-                        g.state == State.LOST && progress.canRevive() && Layout.inRect(Layout.END_REVIVE, x, y) -> BTN_REVIVE
+                        canRev && coinOk && adOk && Layout.inRect(Layout.END_REVIVE_L, x, y) -> BTN_REVIVE
+                        canRev && coinOk && adOk && Layout.inRect(Layout.END_REVIVE_R, x, y) -> BTN_AD_REVIVE
+                        canRev && coinOk && !adOk && Layout.inRect(Layout.END_REVIVE, x, y) -> BTN_REVIVE
+                        canRev && !coinOk && adOk && Layout.inRect(Layout.END_REVIVE, x, y) -> BTN_AD_REVIVE
+                        g.state == State.WON && adOk && !doubled && prizeText.isEmpty() && reward > 0 && ui.endT > 1.5f && Layout.inRect(Layout.END_DOUBLE, x, y) -> BTN_AD_DOUBLE
                         Layout.inRect(Layout.END_NEXT, x, y) -> BTN_NEXT
                         Layout.inRect(Layout.END_MENU, x, y) -> BTN_MENU
                         else -> BTN_BLOCK
                     }
                 }
+                for (aid in 0 until AID_COUNT) if (Layout.inCircle(x, y, Layout.aidX(aid), BOOST_Y, Layout.BOOST_R + 6f) && boosterOn(aid)) return aidButtonId(aid)
                 return when {
-                    hintInfo.isNotEmpty() && hintAlphaNow() > 0.3f && renderer?.hintHit(x, y) == true -> BTN_INFO
-                    Layout.inCircle(x, y, Layout.HUD_R_X, Layout.HUD_Y, Layout.HUD_R + 6f) -> BTN_RESTART
-                    Layout.inCircle(x, y, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R + 6f) -> BTN_SOUND
-                    Layout.inCircle(x, y, ROCKET_X, BOOST_Y, Layout.BOOST_R + 6f) && boosterOn(AID_ROCKET) -> BTN_ROCKET
-                    Layout.inCircle(x, y, Layout.HINT_BX, BOOST_Y, Layout.BOOST_R + 6f) && boosterOn(AID_HINT) -> BTN_HINT
-                    Layout.inCircle(x, y, RETURN_X, BOOST_Y, Layout.BOOST_R + 6f) && boosterOn(AID_RETURN) -> BTN_RETURN
+                    Layout.inCircle(x, y, Layout.HUD_R_X, Layout.PLAY_Y, Layout.PLAY_R + 8f) -> BTN_RESTART
+                    Layout.inCircle(x, y, Layout.HUD_L_X, Layout.PLAY_Y, Layout.PLAY_R + 8f) -> BTN_SOUND
+                    Layout.inRect(Layout.PLAY_COIN, x, y) -> BTN_SHOP
                     else -> BTN_NONE
                 }
             }
@@ -410,6 +429,7 @@ class GameView(context: Context) : View(context) {
 
     private fun activate(id: Int) {
         if (id >= BTN_LEVEL) { startLevel(id - BTN_LEVEL); return }
+        if (id in BTN_SHOP_ITEM until BTN_SHOP_ITEM + Layout.SHOP_ROWS.size) { shopItem(id - BTN_SHOP_ITEM); return }
         if (id in BTN_LANG..BTN_LANG + 2) { progress.langMode = id - BTN_LANG; Lang.set(progress.langMode); return }
         if (id == BTN_THEME || id == BTN_THEME + 1) {
             val dark = id == BTN_THEME
@@ -421,19 +441,24 @@ class GameView(context: Context) : View(context) {
             BTN_PLAY -> startLevel(progress.unlocked)
             BTN_LEVELS -> go(Screen.LEVELS)
             BTN_SOUND -> { progress.sound = !progress.sound; sound.enabled = progress.sound }
-            BTN_BACK, BTN_MENU -> go(Screen.MENU)
+            BTN_BACK, BTN_MENU -> if (screen == Screen.SHOP) closeShop() else go(Screen.MENU)
             BTN_RESTART -> startLevel(current)
             BTN_RESUME -> { paused = false; lastNs = 0L; smoothDt = 0f }
-            BTN_ROCKET -> if (g != null) useBooster(AID_ROCKET, g)
-            BTN_RETURN -> if (g != null) useBooster(AID_RETURN, g)
+            BTN_UNDO -> if (g != null) useAid(AID_UNDO, g)
+            BTN_CLEAR -> if (g != null) useAid(AID_CLEAR, g)
+            BTN_SHUFFLE -> if (g != null) useAid(AID_SHUFFLE, g)
             BTN_HINT -> if (g != null) useHint(g)
             BTN_REVIVE -> if (g != null && g.state == State.LOST && progress.canRevive() && g.revive()) {
                 progress.spendRevive(); ui.endT = 0f; idle = 0f
             }
+            BTN_AD_REVIVE -> if (g != null && g.canRevive()) watchRewarded { if (g.revive()) { ui.endT = 0f; idle = 0f } }
+            BTN_AD_DOUBLE -> if (g != null && g.state == State.WON && !doubled) watchRewarded { progress.addCoins(reward); reward *= 2; doubled = true }
+            BTN_SHOP -> openShop()
+            BTN_RESTORE -> restorePurchases()
+            BTN_AD_CLOSE -> simAds?.finish(true)
             BTN_HELP -> go(Screen.HELP)
             BTN_SETTINGS -> go(Screen.SETTINGS)
-            BTN_INFO -> openInfo()
-            BTN_INFO_OK -> { infoOpen = false; hintAt = ui.clock }
+            BTN_INFO_OK -> infoOpen = false
             BTN_SOUND_ON -> { progress.sound = true; sound.enabled = true }
             BTN_SOUND_OFF -> { progress.sound = false; sound.enabled = false }
             BTN_GIFT -> {
@@ -441,51 +466,109 @@ class GameView(context: Context) : View(context) {
                 ui.menuMsg = if (c > 0) tr("Подарок: +$c монет · день ${progress.giftStreak} подряд", "Gift: +$c coins · day ${progress.giftStreak} in a row") else tr("Следующий подарок будет завтра", "Next gift is tomorrow")
                 ui.menuMsgAt = ui.clock
             }
-            BTN_NEXT -> if (g != null) startLevel(if (g.state == State.WON && current < LEVEL_COUNT) current + 1 else current)
+            BTN_NEXT -> if (g != null && !busy) {
+                val won = g.state == State.WON && current < LEVEL_COUNT
+                val next = if (won) current + 1 else current
+                if (won && ads.interstitialReady && AdPolicy.interstitialDue(current, winsSinceAd, lastAdMs, now(), progress.adsRemoved)) {
+                    busy = true
+                    ads.showInterstitial { post { busy = false; winsSinceAd = 0; lastAdMs = now(); ads.load(); startLevel(next) } }
+                } else startLevel(next)
+            }
         }
     }
 
-    private fun useBooster(aid: Int, g: Game) {
+    /** Помощник: отменить ход, очистить ленту или перемешать. Нет запаса и монет — открывается магазин. */
+    private fun useAid(aid: Int, g: Game) {
+        if (g.state != State.PLAY) return
         val free = ui.freeAid == aid                 // на учебном уровне помощник бесплатный и не портит звёзды
-        if (g.state != State.PLAY || !(free || progress.canAfford(aid))) return
-        if (if (aid == AID_ROCKET) g.useRocket() else g.returnMarbles()) {
-            idle = 0f
-            if (free) { freeUsed++; lessonPassed() } else progress.spend(aid)
-        }
+        if (!free && !progress.canAfford(aid)) { openShop(); return }
+        val ok = when (aid) { AID_UNDO -> g.undo(); AID_CLEAR -> g.clearBelt(); else -> g.shuffle() }
+        if (!ok) return
+        idle = 0f; ui.hintCol = -1
+        if (free) { freeUsed++; lessonPassed() } else progress.spend(aid)
     }
+
+    /** Мягко подсвечивает кольцом кнопку помощника: подсказка без текста. */
+    private fun nudge(aid: Int) { if (boosterOn(aid)) { ui.nudgeAid = aid; ui.nudgeT = 3f } }
 
     /**
      * Умная подсказка: игра переводится в модель и ищется выигрышная последовательность от *текущего* положения.
-     * Платим только за ход, который реально показали; «подожди» и «тупик» бесплатны.
+     * Платим только за ход, который реально показали; «подожди» и «тупик» бесплатны. Текста нет: ход показывает указатель на лотке,
+     * а в тупике кольцом подсвечивается помощник, который может помочь.
      */
     private fun useHint(g: Game) {
         if (g.state != State.PLAY) return
         val free = ui.freeAid == AID_HINT
-        if (!free && !progress.canAfford(AID_HINT)) {
-            say(tr("Не хватает монет на подсказку (${Progress.HINT_PRICE})", "Not enough coins for a hint (${Progress.HINT_PRICE})"),
-                tr("Подсказка стоит ${Progress.HINT_PRICE} монет, когда бесплатные закончились. Монеты дают за пройденные уровни и ежедневный подарок в меню.",
-                    "A hint costs ${Progress.HINT_PRICE} coins once the free ones run out. Coins come from finished levels and the daily gift in the menu."))
-            return
-        }
+        if (!free && !progress.canAfford(AID_HINT)) { openShop(); return }
         val a = Hints.advise(g, 30_000)
         when (a.kind) {
             Advice.TAP, Advice.UNSURE -> {
-                if (free) lessonPassed(silent = true) else { progress.spend(AID_HINT); hintsUsed++ }
+                if (free) lessonPassed() else { progress.spend(AID_HINT); hintsUsed++ }
                 idle = 0f
                 point(a.col)
-                if (a.kind == Advice.TAP) say(tr("Нажми сюда: это ведёт к победе", "Tap here: this leads to a win"),
-                    tr("Лампочка нашла ходы, которые приводят к победе из текущего положения. Выделенный лоток — первый в этой цепочке.",
-                        "The bulb found a winning sequence from the current position. The highlighted tray is its first step."))
-                else say(tr("Точно просчитать не вышло, но ход разумный", "Could not calculate it fully, but this move is sensible"),
-                    tr("Положение слишком сложное, чтобы перебрать все варианты. Лампочка показала ход, после которого на ленте остаётся меньше всего шариков.",
-                        "The position is too complex to check every option. The bulb picked the move that leaves the fewest beads on the belt."))
             }
-            Advice.WAIT -> say(tr("Подожди: шарики ещё едут", "Wait: the beads are still moving"),
-                tr("Пока шарики падают и едут по ленте, неизвестно, куда они попадут, поэтому совет был бы неточным. Это бесплатно.",
-                    "While beads are falling and riding the belt, it is unclear where they end up, so any advice would be inaccurate. This one is free."))
-            Advice.STUCK -> say(tr("Похоже, тупик. Поможет «Вернуть» или заново", "Looks like a dead end. Try Return or restart"),
-                tr("Из этого положения выиграть уже нельзя. «Вернуть» освободит ленту, а кнопка со стрелкой в углу начнёт уровень сначала. Подсказка бесплатная.",
-                    "This position can no longer be won. Return frees the belt, or restart the level with the button in the corner. This hint is free."))
+            Advice.STUCK -> nudge(if (g.canClear && boosterOn(AID_CLEAR)) AID_CLEAR else AID_UNDO)
+            else -> {}      // шарики ещё едут: совет был бы неточным, ничего не списываем
+        }
+    }
+
+    // ---------- магазин, реклама, покупки ----------
+
+    private fun openShop() {
+        if (screen == Screen.SHOP) return
+        shopFrom = screen
+        go(Screen.SHOP)
+    }
+
+    /** Назад из магазина: туда, откуда пришли; игра при этом ждёт на паузе. */
+    private fun closeShop() {
+        go(shopFrom)
+        if (shopFrom == Screen.PLAY && game?.state == State.PLAY) paused = true
+    }
+
+    /** Видео за награду: `onReward` вызывается, только если видео досмотрели. */
+    private fun watchRewarded(onReward: () -> Unit) {
+        if (busy || !ads.rewardedReady) return
+        busy = true
+        ads.showRewarded { earned ->
+            post {
+                busy = false; lastAdMs = now(); ads.load()
+                if (earned) onReward() else notify(tr("Видео не досмотрено: награды нет", "Video not finished: no reward"))
+            }
+        }
+    }
+
+    /** Нажатие на строку магазина: 0 — видео за монеты, дальше товары. */
+    private fun shopItem(i: Int) {
+        if (i == 0) {
+            if (progress.freeAdsLeft() <= 0) { notify(tr("На сегодня видео закончились", "No more videos today")); return }
+            if (!ads.rewardedReady) { notify(tr("Видео пока недоступно", "No video right now")); return }
+            watchRewarded { val c = progress.claimFreeAd(); notify(tr("+$c монет", "+$c coins")) }
+            return
+        }
+        val o = Shop.offers.getOrNull(i - 1) ?: return
+        if (progress.owned(o.sku)) { notify(tr("Уже куплено", "Already owned")); return }
+        if (billing.price(o.sku) == null) { notify(tr("Покупки сейчас недоступны", "Purchases are unavailable right now")); return }
+        if (busy) return
+        busy = true
+        billing.buy(o.sku) { ok ->
+            post {
+                busy = false
+                if (ok && progress.applyPurchase(o.sku)) notify(tr("Спасибо! Покупка получена", "Thank you! Purchase received"))
+                else if (!ok) notify(tr("Покупка не завершена", "Purchase not completed"))
+            }
+        }
+    }
+
+    private fun restorePurchases() {
+        if (busy) return
+        busy = true
+        billing.restore { skus ->
+            post {
+                busy = false
+                val n = progress.restoreOwned(skus)
+                notify(if (n > 0) tr("Восстановлено покупок: $n", "Purchases restored: $n") else tr("Нечего восстанавливать", "Nothing to restore"))
+            }
         }
     }
 
@@ -501,13 +584,16 @@ class GameView(context: Context) : View(context) {
             Screen.MENU -> screens?.menu(cv, ui)
             Screen.LEVELS -> screens?.levels(cv, ui)
             Screen.HELP -> screens?.help(cv, ui)
+            Screen.SHOP -> screens?.shop(cv, ui, billing, ads.rewardedReady, progress.freeAdsLeft())
             Screen.PLAY -> game?.let { g ->
-                renderer?.draw(cv, g, ui, hint, ui.clock - hintAt, hintInfo.isNotEmpty())
-                if (g.state != State.PLAY) { screens?.end(cv, g, ui, reward, current == LEVEL_COUNT, stars, prizeText); renderer?.confetti(cv, g) }
+                renderer?.draw(cv, g, ui)
+                if (g.state != State.PLAY) { screens?.end(cv, g, ui, reward, current == LEVEL_COUNT, stars, prizeText, ads.rewardedReady, doubled); renderer?.confetti(cv, g) }
                 if (paused) screens?.pause(cv, ui)
                 if (infoOpen) screens?.info(cv, ui)
             }
         }
+        val sa = simAds
+        if (sa != null && sa.pending != null) screens?.fakeAd(cv, ui, simAdT, sa.interstitial)
         cv.restore()
         if (fade > 0f) {
             fadePaint.color = Theme.alpha(Theme.fade, (fade * fade * 255).toInt())

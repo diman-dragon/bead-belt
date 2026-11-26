@@ -90,6 +90,9 @@ object Theme {
      * (тёмно-синий против светло-бирюзового, тёмно-красный против янтарного и розового), чтобы не сливались;
      * на коробках и лотках к цвету добавлен ещё и значок-фигурка (см. Assets.glyph).
      */
+    /** Нейтральная палитра «скрытого» лотка: серо-синий, цвет не угадать. Формат тот же, что у [pal]. */
+    val hiddenPal: IntArray = intArrayOf(0xFFD6DCEE.toInt(), 0xFF7C89B4.toInt(), 0xFF3F4A74.toInt(), mix(0xFF3F4A74.toInt(), BLACK, 0.5f))
+
     val pal: Array<IntArray> = arrayOf(
         longArrayOf(0xFFFF8A94, 0xFFE5192E, 0xFF8F0C1C),   // красный (тёмный, насыщенный)
         longArrayOf(0xFF8FB4FF, 0xFF2B52F0, 0xFF0E1F94),   // синий (глубокий)

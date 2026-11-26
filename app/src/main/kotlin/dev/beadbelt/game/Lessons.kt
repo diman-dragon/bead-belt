@@ -1,20 +1,27 @@
 package dev.beadbelt.game
 
-// виды платных помощников
-const val AID_ROCKET = 0
-const val AID_RETURN = 1
-const val AID_HINT = 2
+// четыре помощника внизу экрана (порядок = порядок кнопок слева направо)
+const val AID_HINT = 0       // лампочка: показывает ход
+const val AID_UNDO = 1       // отменить последний ход
+const val AID_SHUFFLE = 2    // перемешать лотки
+const val AID_CLEAR = 3      // очистить ленту: шарики с ленты возвращаются в лотки
+const val AID_COUNT = 4
 
 // уроки: номер = индекс в [Lessons.all]
 const val LS_BASICS = 0
 const val LS_BULB = 1
-const val LS_ROCKET = 2
-const val LS_RETURN = 3
-const val LS_LINKS = 4
-const val LS_LIFT = 5
+const val LS_UNDO = 2
+const val LS_CLEAR = 3
+const val LS_SHUFFLE = 4
+const val LS_HIDDEN = 5
+const val LS_LINKS = 6
+const val LS_LIFT = 7
 
-/** Приз за пройденный урок. */
-class Prize(val coins: Int = 0, val rockets: Int = 0, val returns: Int = 0, val hints: Int = 0)
+/** Приз: монеты и штуки помощников (`aids[AID_*]`). */
+class Prize(val coins: Int = 0, hint: Int = 0, undo: Int = 0, shuffle: Int = 0, clear: Int = 0) {
+    val aids = intArrayOf(hint, undo, shuffle, clear)
+    val total: Int get() = coins + aids.sum()
+}
 
 /**
  * Урок: новая механика появляется на уровне `level`. Перед уровнем — карточка с объяснением, сам уровень —
@@ -24,13 +31,16 @@ class Prize(val coins: Int = 0, val rockets: Int = 0, val returns: Int = 0, val 
 class Lesson(val id: Int, val level: Int, val aid: Int, val prize: Prize)
 
 object Lessons {
+    /** Все 8 уроков помещаются в первые 50 уровней: дальше новых механик нет, растёт только сложность. */
     val all = listOf(
         Lesson(LS_BASICS, 1, -1, Prize(coins = 30)),
-        Lesson(LS_BULB, 4, AID_HINT, Prize(hints = 3)),
-        Lesson(LS_ROCKET, 10, AID_ROCKET, Prize(rockets = 2)),
-        Lesson(LS_RETURN, 16, AID_RETURN, Prize(returns = 2)),
-        Lesson(LS_LINKS, 41, -1, Prize(coins = 60, hints = 1)),
-        Lesson(LS_LIFT, 60, -1, Prize(rockets = 1, returns = 1)),
+        Lesson(LS_BULB, 4, AID_HINT, Prize(hint = 3)),
+        Lesson(LS_UNDO, 8, AID_UNDO, Prize(undo = 3)),
+        Lesson(LS_CLEAR, 12, AID_CLEAR, Prize(clear = 2)),
+        Lesson(LS_SHUFFLE, 16, AID_SHUFFLE, Prize(shuffle = 2)),
+        Lesson(LS_HIDDEN, 20, -1, Prize(coins = 50, undo = 1)),
+        Lesson(LS_LINKS, 26, -1, Prize(coins = 60, shuffle = 1)),
+        Lesson(LS_LIFT, 34, -1, Prize(coins = 60, clear = 1)),
     )
 
     /** На учебных уровнях лента просторнее: игрок осваивает новое, а не борется за место. */
@@ -40,5 +50,5 @@ object Lessons {
     fun atLevel(level: Int): Lesson? = all.firstOrNull { it.level == level }
 
     /** Урок, открывающий помощника. */
-    fun forAid(aid: Int): Lesson = when (aid) { AID_ROCKET -> all[LS_ROCKET]; AID_RETURN -> all[LS_RETURN]; else -> all[LS_BULB] }
+    fun forAid(aid: Int): Lesson = all.first { it.aid == aid }
 }

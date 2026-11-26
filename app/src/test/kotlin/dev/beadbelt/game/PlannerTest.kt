@@ -42,7 +42,7 @@ class PlannerTest {
     fun outcomesDifferBetweenSeeds() {
         val sigs = HashSet<String>()
         for (seed in 1L..8L) {
-            val g = Game(Levels.make(40), seed) { _, _ -> }
+            val g = Game(Levels.make(30), seed) { _, _ -> }
             repeat(30) { g.update(dt) }
             g.tapColumn(0)
             repeat(180) { g.update(dt) }

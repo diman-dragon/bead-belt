@@ -96,9 +96,14 @@ class Assets(scale: Float) {
 
     // ---------- ящики ----------
 
-    val tray: Array<Bitmap> = Array(COLOR_COUNT) { bakeCrate(it, TRAY_W, TRAY_H, box = false, dim = false) }
-    val box: Array<Bitmap> = Array(COLOR_COUNT) { bakeCrate(it, BOX_W, BOX_H, box = true, dim = false) }
-    val boxDim: Array<Bitmap> = Array(COLOR_COUNT) { bakeCrate(it, BOX_W, BOX_H, box = true, dim = true) }
+    val tray: Array<Bitmap> = Array(COLOR_COUNT) { bakeCrate(it, TRAY_W, TRAY_H, box = false, dimA = 0) }
+    val box: Array<Bitmap> = Array(COLOR_COUNT) { bakeCrate(it, BOX_W, BOX_H, box = true, dimA = 0) }
+    /** Запертая коробка: заметно затемнена. */
+    val boxDim: Array<Bitmap> = Array(COLOR_COUNT) { bakeCrate(it, BOX_W, BOX_H, box = true, dimA = 130) }
+    /** Коробка в очереди: цвет читается чётко, лишь чуть приглушён, чтобы было видно, какая из них активная. */
+    val boxNext: Array<Bitmap> = Array(COLOR_COUNT) { bakeCrate(it, BOX_W, BOX_H, box = true, dimA = 30) }
+    /** Лоток со скрытым цветом: нейтральный, без значка цвета (вопросительный знак рисует отрисовщик). */
+    val trayHidden: Bitmap = bakeCrate(COLOR_COUNT, TRAY_W, TRAY_H, box = false, dimA = 0)
 
     /** Значок-фигурка цвета: на коробках и лотках цвет читается ещё и по форме (помогает, когда оттенки похожи). */
     private fun glyph(cv: Canvas, c: Int, x: Float, y: Float, r: Float, q: Paint) {
@@ -133,11 +138,12 @@ class Assets(scale: Float) {
         q.style = Paint.Style.FILL
     }
 
-    private fun bakeCrate(c: Int, w: Float, h: Float, box: Boolean, dim: Boolean): Bitmap {
+    /** c == COLOR_COUNT — нейтральный лоток со скрытым цветом. dimA — непрозрачность тёмной вуали (0 — без неё). */
+    private fun bakeCrate(c: Int, w: Float, h: Float, box: Boolean, dimA: Int): Bitmap {
         val bmp = bitmap(w + 2 * PAD, h + 2 * PAD + EXTRA)
         val cv = Canvas(bmp)
         cv.scale(k, k); cv.translate(PAD, PAD)
-        val col = Theme.pal[c]
+        val col = if (c >= COLOR_COUNT) Theme.hiddenPal else Theme.pal[c]
         val q = paint()
         val rr = RectF()
         val rad = 15f
@@ -185,14 +191,14 @@ class Assets(scale: Float) {
                 q.color = Theme.alpha(Theme.BLACK, 150); cv.drawCircle(hx, 34f, 9.5f, q)
             }
             q.color = Theme.alpha(white, 26); rr.set(10f, 58f, w - 10f, h - 9f); cv.drawRoundRect(rr, 10f, 10f, q)
-            glyph(cv, c, w / 2, 74f, 7.4f, q)
+            if (c < COLOR_COUNT) glyph(cv, c, w / 2, 74f, 7.4f, q)
         } else {
             q.color = Theme.alpha(white, 30); rr.set(w / 2 - 17f, h - 26f, w / 2 + 17f, h - 10f); cv.drawRoundRect(rr, 8f, 8f, q)   // табличка со значком цвета
-            glyph(cv, c, w / 2, h - 18f, 5.6f, q)
+            if (c < COLOR_COUNT) glyph(cv, c, w / 2, h - 18f, 5.6f, q)
         }
 
-        if (dim) {
-            q.color = Theme.alpha(0xFF0A1535.toInt(), 130)
+        if (dimA > 0) {
+            q.color = Theme.alpha(0xFF0A1535.toInt(), dimA)
             rr.set(0f, 0f, w, h + 6f); cv.drawRoundRect(rr, rad, rad, q)
         }
         return bmp

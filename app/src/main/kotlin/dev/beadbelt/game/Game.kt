@@ -5,7 +5,8 @@ import kotlin.math.atan2
 import kotlin.math.max
 import kotlin.math.min
 
-class Tray(val c: Int, n0: Int, val arrow: Int = 0, val pid: Int = 0) { var n = n0; var d = 0f }   // d — отображаемая глубина
+/** Лоток. `hidden` — цвет показывается, только когда лоток выйдет вперёд колонки. d — отображаемая глубина. */
+class Tray(val c: Int, n0: Int, val arrow: Int = 0, val pid: Int = 0, val hidden: Boolean = false) { var n = n0; var d = 0f }
 /**
  * Коробка. n — шарики внутри, res — летят прямо сейчас, slot — место (0..3).
  * Собранная коробка тут же уступает место следующей и дозавершается в списке [Game.popping].
@@ -18,7 +19,6 @@ class Box(val c: Int, val slot: Int) { var n = 0; var res = 0; var pop = -1f; va
 class Flyer(val c: Int, val x0: Float, val y0: Float, val box: Box, val boxIdx: Int, val hole: Int) { var t = 0f }
 class Leaving(val tray: Tray, val x: Float) { var t = 0f }
 class Spawn(val c: Int, val x: Float)
-class RocketFx(val boxIdx: Int) { var t = 0f }
 class Popup(val text: String, val x: Float, val y: Float, val c: Int) { var t = 0f }
 
 enum class State { PLAY, WON, LOST }
@@ -31,11 +31,13 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
         const val FLY_T = 0.34f
         /** Подъём дымком: сколько пикселей прошла коробка к моменту f (0..1) — медленно, потом легко уходит вверх. */
         fun rise(f: Float): Float { val e = f.coerceIn(0f, 1f); return 170f * (e * e * (3f - 2f * e) * 0.55f + e * 0.45f) }
-        const val ROCKET_T = 0.55f
+        /** «Перемешать»: сколько случайных раскладок пробуем и сколько состояний модели разбираем на каждую. */
+        const val SHUFFLE_TRIES = 10
+        const val SHUFFLE_NODES = 15_000
     }
 
     val cols: List<MutableList<Tray>> =
-        level.columns.map { col -> col.map { Tray(it.c, it.n, it.arrow, it.pid) }.toMutableList() }
+        level.columns.map { col -> col.map { Tray(it.c, it.n, it.arrow, it.pid, it.hidden) }.toMutableList() }
     val colX = FloatArray(cols.size) { 180f + (it - (cols.size - 1) / 2f) * 84f }
     val boxX = FloatArray(SLOTS) { 54f + 84f * it }
     /** Очереди коробок по местам: вторая и далее (первая стоит в [boxes]). */
@@ -50,7 +52,7 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
     val n = level.belt
     val sp = Geo.L / n
     val slots = IntArray(n) { -1 }
-    /** Сколько раз игрок пользовался бустерами и «ещё шансом» на этом уровне. */
+    /** Сколько раз игрок пользовался помощниками (кроме лампочки) и «ещё шансом» на этом уровне. */
     var assists = 0
     val born = FloatArray(n)
     /** Откуда шарик начал падать с горловины воронки на ленту (для отрисовки). */
@@ -63,7 +65,6 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
     val leaving = ArrayList<Leaving>()
     /** Собранные коробки: уже уступили место следующим, но ещё принимают летящие шарики и лопаются. */
     val popping = ArrayList<Box>()
-    val rockets = ArrayList<RocketFx>()
     val popups = ArrayList<Popup>()
     val fx = Particles()
 
@@ -99,11 +100,13 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
     /** Тап по колонке: лоток высыпается; если он ведущий в паре и ведомый впереди своей колонки — высыпается и ведомый. */
     fun tapColumn(i: Int): Boolean {
         if (state != State.PLAY || i !in cols.indices || cols[i].isEmpty()) return false
+        val snap = takeSnap()
         val first = cols[i].removeAt(0)
         release(first, colX[i])
         // связь строго от ведущего к ведомому; тап по ведомому запускает только его самого
         val to = Links.follower(first.arrow, first.pid, i, cols.size) { c -> cols[c].firstOrNull()?.pid ?: 0 }
         if (to >= 0) release(cols[to].removeAt(0), colX[to])
+        lastMove = snap
         onEvent(EV_TAP, 0)
         return true
     }
@@ -121,58 +124,105 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
         return false
     }
 
-    // ---------- бустеры ----------
+    // ---------- помощники ----------
 
-    /** Шарики цвета c, которые ещё не закреплены за коробкой: на ленте, в воронке и в очереди. */
-    private fun countColor(c: Int): Int {
-        var k = 0
-        for (j in slots.indices) if (slots[j] == c) k++
-        for (i in 0 until hopper.size) if (hopper[i].c == c) k++
-        for (s in spawnQ) if (s.c == c) k++
-        return k
+    private class Snap(
+        val cols: List<List<Tray>>, val boxes: Array<Box?>, val queues: List<List<Box>>, val popping: List<Box>,
+        val slots: IntArray, val born: FloatArray, val bornX: FloatArray, val bornY: FloatArray,
+        val phase: Float, val time: Float, val done: Int, val elevatorOpen: Boolean,
+        val spawnQ: List<Spawn>, val hopper: List<Body>, val flyers: List<Flyer>, val leaving: List<Leaving>,
+    )
+
+    /** Положение до последнего хода (тап, «очистить», «перемешать»): к нему возвращает «отменить». */
+    private var lastMove: Snap? = null
+
+    private fun copyTray(t: Tray) = Tray(t.c, t.n, t.arrow, t.pid, t.hidden).also { it.d = t.d }
+    private fun copyBox(b: Box) = Box(b.c, b.slot).also {
+        it.n = b.n; it.res = b.res; it.pop = b.pop; it.enter = b.enter; it.locked = b.locked; it.bump = b.bump; it.smokeT = b.smokeT
     }
 
-    /** Ракета: через мгновение мгновенно «собирает» самую выгодную коробку, убирая её шарики с поля. */
-    fun useRocket(): Boolean {
-        if (state != State.PLAY || rockets.isNotEmpty()) return false
-        var bi = -1
-        var bs = -1
-        for (i in 0 until SLOTS) {
-            val b = boxes[i] ?: continue
-            if (!ready(b) || need(b) <= 0) continue
-            val score = countColor(b.c) * 4 + b.committed
-            if (score > bs) { bs = score; bi = i }
-        }
-        if (bi < 0) return false
-        rockets.add(RocketFx(bi))
+    /** Полный снимок партии: лотки, коробки, шарики на ленте, в воронке и в полёте. Копии независимы от живых объектов. */
+    private fun takeSnap(): Snap {
+        val map = java.util.IdentityHashMap<Box, Box>()
+        fun cb(b: Box): Box = map.getOrPut(b) { copyBox(b) }
+        return Snap(
+            cols.map { col -> col.map { copyTray(it) } },
+            Array(SLOTS) { i -> boxes[i]?.let { cb(it) } },
+            queues.map { q -> q.map { cb(it) } },
+            popping.map { cb(it) },
+            slots.clone(), born.clone(), bornX.clone(), bornY.clone(), phase, time, done, elevatorOpen,
+            spawnQ.toList(),
+            hopper.map { b -> Body(b.c, b.x, b.y).also { it.vx = b.vx; it.vy = b.vy; it.rx = b.rx; it.ry = b.ry } },
+            flyers.map { f -> Flyer(f.c, f.x0, f.y0, cb(f.box), f.boxIdx, f.hole).also { it.t = f.t } },
+            leaving.map { l -> Leaving(copyTray(l.tray), l.x).also { it.t = l.t } },
+        )
+    }
+
+    private fun restore(sn: Snap) {
+        for (i in cols.indices) { cols[i].clear(); cols[i].addAll(sn.cols[i]) }
+        for (i in 0 until SLOTS) { boxes[i] = sn.boxes[i]; queues[i].clear(); queues[i].addAll(sn.queues[i]) }
+        popping.clear(); popping.addAll(sn.popping)
+        System.arraycopy(sn.slots, 0, slots, 0, n); System.arraycopy(sn.born, 0, born, 0, n)
+        System.arraycopy(sn.bornX, 0, bornX, 0, n); System.arraycopy(sn.bornY, 0, bornY, 0, n)
+        phase = sn.phase; time = sn.time; done = sn.done; elevatorOpen = sn.elevatorOpen
+        spawnQ.clear(); spawnQ.addAll(sn.spawnQ)
+        hopper.clear(); hopper.addAll(sn.hopper)
+        flyers.clear(); flyers.addAll(sn.flyers)
+        leaving.clear(); leaving.addAll(sn.leaving)
+        popups.clear()
+        state = State.PLAY; stuckT = 0f; shake = 0f; pickCombo = 0; comboT = 0f; spawnT = 0f
+    }
+
+    /** Есть что отменять: был ход, и партия не выиграна. После отмены повторно отменить нельзя. */
+    val canUndo: Boolean get() = lastMove != null && state != State.WON
+
+    /** «Отменить последний ход»: всё возвращается в то положение, в котором было перед последним тапом (или помощником). */
+    fun undo(): Boolean {
+        val sn = lastMove ?: return false
+        if (state == State.WON) return false
+        restore(sn); lastMove = null
         assists++
-        onEvent(EV_ROCKET, 0)
+        onEvent(EV_AID, 0)
         return true
     }
 
-    /** Убирает k шариков цвета c: с ленты (только ничьих), из воронки, из очереди, затем из лотков. */
-    private fun removeMarbles(c: Int, k: Int) {
-        var left = k
-        for (j in slots.indices) if (left > 0 && slots[j] == c) {
-            Geo.point(phase + j * sp, pt); burst(pt[0], pt[1], c, 4); slots[j] = -1; left--
+    /** На ленте есть шарики, которые можно вернуть. */
+    val canClear: Boolean get() { for (c in slots) if (c >= 0) return true; return false }
+
+    /** «Очистить ленту»: все шарики с ленты возвращаются новыми лотками в самые короткие колонки. */
+    fun clearBelt(): Boolean {
+        if (state != State.PLAY || !canClear) return false
+        val snap = takeSnap()
+        if (takeBack(Int.MAX_VALUE, 3) == 0) return false
+        lastMove = snap
+        assists++
+        onEvent(EV_AID, 0)
+        return true
+    }
+
+    /** Есть что перемешивать: в лотках осталось хотя бы два лотка. */
+    val canShuffle: Boolean get() { var k = 0; for (c in cols) k += c.size; return k >= 2 }
+
+    /**
+     * «Перемешать»: оставшиеся лотки раздаются по колонкам заново. Связи при этом разрываются, скрытые цвета остаются скрытыми.
+     * Пробуется несколько случайных раскладок, и берётся первая, из которой модель находит путь к победе.
+     */
+    fun shuffle(): Boolean {
+        if (state != State.PLAY || !canShuffle) return false
+        val snap = takeSnap()
+        val all = ArrayList<Tray>(); for (c in cols) all.addAll(c)
+        for (attempt in 0 until SHUFFLE_TRIES) {
+            java.util.Collections.shuffle(all, rnd)
+            for (c in cols) c.clear()
+            all.forEachIndexed { i, t -> cols[i % cols.size].add(Tray(t.c, t.n, 0, 0, t.hidden)) }
+            for (c in cols) c.forEachIndexed { i, t -> t.d = i.toFloat() }
+            val (b, st) = Hints.snapshot(this)
+            if (st.done == b.totalBoxes || Planner.solve(b, st, SHUFFLE_NODES).win) break
         }
-        var hi = hopper.size - 1
-        while (left > 0 && hi >= 0) {
-            val b = hopper[hi]
-            if (b.c == c) { burst(b.x, b.y - LIFT, c, 4); hopper.removeAt(hi); left-- }
-            hi--
-        }
-        val si = spawnQ.iterator()
-        while (left > 0 && si.hasNext()) { val sp0 = si.next(); if (sp0.c == c) { si.remove(); left-- } }
-        for (col in cols) {
-            val ti = col.iterator()
-            while (left > 0 && ti.hasNext()) {
-                val t = ti.next()
-                if (t.c != c) continue
-                val take = min(left, t.n); t.n -= take; left -= take
-                if (t.n == 0) ti.remove()
-            }
-        }
+        lastMove = snap
+        assists++
+        onEvent(EV_AID, 0)
+        return true
     }
 
     /** Новые лотки из шариков cnt[цвет] — в самые короткие колонки (не больше 6 шариков в лотке). */
@@ -199,21 +249,15 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
         return tot
     }
 
-    /** «Вернуть шарики»: до 8 шариков с ленты возвращаются новыми лотками в самую короткую колонку. */
-    fun returnMarbles(): Boolean {
-        if (state != State.PLAY) return false
-        if (takeBack(8, 3) == 0) return false
-        assists++
-        onEvent(EV_ROCKET, 0)
-        return true
-    }
+    /** Можно ли продолжить после поражения: на ленте есть шарики, которые вернутся в лотки. */
+    fun canRevive(): Boolean { if (state != State.LOST) return false; for (c in slots) if (c >= 0) return true; return false }
 
     /** «Ещё шанс» после поражения: все ничьи шарики с ленты возвращаются лотками, игра продолжается. */
     fun revive(): Boolean {
         if (state != State.LOST) return false
         if (takeBack(COLOR_COUNT * 40, 2) == 0) return false
-        state = State.PLAY; stuckT = 0f; shake = 0f; assists++
-        onEvent(EV_ROCKET, 0)
+        state = State.PLAY; stuckT = 0f; shake = 0f; assists++; lastMove = null
+        onEvent(EV_AID, 0)
         return true
     }
 
@@ -287,16 +331,6 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
             fi--
         }
 
-        var ri = rockets.size - 1
-        while (ri >= 0) {
-            val r = rockets[ri]
-            r.t += dt / ROCKET_T
-            val e = r.t.coerceIn(0f, 1f)
-            fx.burst(ROCKET_X + (boxX[r.boxIdx] - ROCKET_X) * e, BOOST_Y + (BOX_Y - BOOST_Y) * e, 6, 1, rnd, 25f)
-            if (r.t >= 1f) { rockets.removeAt(ri); applyRocket(r.boxIdx) }
-            ri--
-        }
-
         for (i in 0 until SLOTS) { val b = boxes[i] ?: continue; if (b.enter > 0f) b.enter = max(0f, b.enter - dt * 3f); if (b.bump > 0f) b.bump = max(0f, b.bump - dt * 4.5f) }
         var bi = popping.size - 1
         while (bi >= 0) {
@@ -315,21 +349,11 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
         }
 
         if (state == State.PLAY) {
-            if (done == total && flyers.isEmpty() && rockets.isEmpty()) {
+            if (done == total && flyers.isEmpty()) {
                 state = State.WON; onEvent(EV_WIN, 0)
                 repeat(40) { fx.confetti(rnd, COLOR_COUNT) }
             } else checkStuck(dt)
         }
-    }
-
-    private fun applyRocket(idx: Int) {
-        val b = boxes[idx] ?: return
-        if (!ready(b) || need(b) <= 0) return
-        val need = need(b)
-        removeMarbles(b.c, need)
-        b.n += need
-        if (b.n == BOX && b.res == 0 && b.pop < 0f) startPop(b, idx)
-        if (b.committed >= BOX) finish(idx)
     }
 
     /**
@@ -387,14 +411,12 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
     private fun checkStuck(dt: Float) {
         // шарик, который проедет мимо подходящей коробки, — ещё не тупик
         val anyMatch = slots.any { c -> c >= 0 && boxes.any { b -> b != null && b.c == c && !b.locked && b.committed < BOX } }
-        val busy = anyMatch || flyers.isNotEmpty() || rockets.isNotEmpty()
+        val busy = anyMatch || flyers.isNotEmpty()
         val full = slots.none { it < 0 }
         val noMoves = cols.all { it.isEmpty() } && spawnQ.isEmpty() && hopper.isEmpty()
         if (!busy && (full || noMoves)) stuckT += dt else stuckT = 0f
         if (stuckT > 0.9f) { state = State.LOST; shake = 0.6f; onEvent(EV_LOSE, 0) }
     }
 
-    /** Угол полёта ракеты (градусы) — для отрисовки. */
-    fun rocketAngle(r: RocketFx): Float =
-        Math.toDegrees(atan2((BOX_Y - BOOST_Y).toDouble(), (boxX[r.boxIdx] - ROCKET_X).toDouble())).toFloat() + 90f
+ 
 }

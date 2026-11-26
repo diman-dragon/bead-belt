@@ -306,6 +306,12 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         }
         g.roundButton(cv, Layout.MENU_HELP_X, ry, 24f, ui.pr(BTN_HELP))
         g.text(cv, "?", Layout.MENU_HELP_X, ry + 9f, 26f, Theme.WHITE)
+        g.roundButton(cv, Layout.MENU_SHOP_X, ry, 24f, ui.pr(BTN_SHOP))
+        g.coin(cv, Layout.MENU_SHOP_X, ry, 13f)
+        g.p.style = Paint.Style.FILL; g.p.shader = null          // зелёный плюс: пополнить запасы
+        g.p.color = Theme.INK; cv.drawCircle(Layout.MENU_SHOP_X + 16f, ry - 16f, 9f, g.p)
+        g.p.color = Theme.GREEN; cv.drawCircle(Layout.MENU_SHOP_X + 16f, ry - 16f, 7.5f, g.p)
+        g.text(cv, "+", Layout.MENU_SHOP_X + 16f, ry - 11.5f, 14f, Theme.INK, shadow = false)
         val msgA = (3.5f - (ui.clock - ui.menuMsgAt)).coerceIn(0f, 1f)
         if (msgA > 0f) g.text(cv, ui.menuMsg, 180f, 586f, 15f, Theme.alpha(Theme.accentText, (msgA * 255).toInt()), Theme.fontMedium)
         // версия внизу
@@ -460,7 +466,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
 
     private fun easeOutBack(t: Float): Float { val c = 1.7f; val u = t - 1f; return 1f + (c + 1f) * u * u * u + c * u * u }
 
-    fun end(cv: Canvas, game: Game, ui: Ui, reward: Int, last: Boolean, stars: Int, prize: String = "") {
+    fun end(cv: Canvas, game: Game, ui: Ui, reward: Int, last: Boolean, stars: Int, prize: String = "", adReady: Boolean = false, doubled: Boolean = false) {
         val a = ((ui.endT - 0.4f) / 0.35f).coerceIn(0f, 1f)
         if (a <= 0f) return
         val p = g.p
@@ -509,9 +515,21 @@ class Screens(private val g: Painter, private val progress: Progress, private va
             g.coin(cv, 150f, c[1] + (if (hasPrize) 207f else 182f), 13f)
             g.text(cv, "+$shown", 170f, c[1] + (if (hasPrize) 215f else 190f), 24f, Theme.GOLD, align = Paint.Align.LEFT)
         }
-        if (!won && progress.canRevive()) {
-            val rv = Layout.END_REVIVE
-            g.button(cv, rv[0], rv[1], rv[2], rv[3], tr("Ещё шанс  ·  ${Progress.REVIVE_PRICE}", "Second chance  ·  ${Progress.REVIVE_PRICE}"), 0, ui.pr(BTN_REVIVE))
+        val coinOk = progress.canRevive()
+        if (!won && game.canRevive() && (coinOk || adReady)) {
+            if (coinOk && adReady) {         // ещё шанс и за монеты, и за видео: кнопка делится пополам
+                val l = Layout.END_REVIVE_L; val r = Layout.END_REVIVE_R
+                g.button(cv, l[0], l[1], l[2], l[3], tr("Шанс · ${Progress.REVIVE_PRICE}", "Chance · ${Progress.REVIVE_PRICE}"), 0, ui.pr(BTN_REVIVE))
+                g.button(cv, r[0], r[1], r[2], r[3], tr("Шанс · видео", "Chance · video"), 1, ui.pr(BTN_AD_REVIVE))
+            } else {
+                val rv = Layout.END_REVIVE
+                if (coinOk) g.button(cv, rv[0], rv[1], rv[2], rv[3], tr("Ещё шанс  ·  ${Progress.REVIVE_PRICE}", "Second chance  ·  ${Progress.REVIVE_PRICE}"), 0, ui.pr(BTN_REVIVE))
+                else g.button(cv, rv[0], rv[1], rv[2], rv[3], tr("Ещё шанс  ·  видео", "Second chance  ·  video"), 0, ui.pr(BTN_AD_REVIVE))
+            }
+        }
+        if (won && adReady && !doubled && prize.isEmpty() && reward > 0 && ui.endT > 1.5f) {      // удвоить награду за видео
+            val d = Layout.END_DOUBLE
+            g.button(cv, d[0], d[1], d[2], d[3], tr("×2 видео", "×2 video"), 1, ui.pr(BTN_AD_DOUBLE))
         }
         val n = Layout.END_NEXT; val m = Layout.END_MENU
         g.button(cv, n[0], n[1], n[2], n[3], if (won && !last) tr("Дальше", "Next") else tr("Ещё раз", "Retry"), 0, ui.pr(BTN_NEXT))
@@ -539,25 +557,122 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         g.button(cv, b[0], b[1], b[2], b[3], tr("Продолжить", "Resume"), 0, ui.pr(BTN_RESUME))
     }
 
+    // ---------- магазин ----------
+
+    private fun shopIcon(cv: Canvas, icon: Int, x: Float, y: Float) {
+        when (icon) {
+            ICON_COIN -> g.coin(cv, x, y, 15f)
+            ICON_HINT -> g.bulb(cv, x, y, 1.15f)
+            ICON_UNDO -> g.undo(cv, x, y, 1.2f)
+            ICON_SHUFFLE -> g.shuffle(cv, x, y, 1.2f)
+            ICON_CLEAR -> g.clear(cv, x, y, 1.2f)
+            ICON_GIFT -> g.gift(cv, x, y, 1.25f)
+            else -> {          // «без рекламы»: перечёркнутый AD
+                g.text(cv, "AD", x, y + 6f, 17f, Theme.WHITE, shadow = false)
+                g.p.style = Paint.Style.STROKE; g.p.shader = null; g.p.strokeWidth = 3.4f; g.p.strokeCap = Paint.Cap.ROUND; g.p.color = Theme.RED
+                cv.drawLine(x - 15f, y + 13f, x + 15f, y - 13f, g.p); g.p.strokeCap = Paint.Cap.BUTT
+            }
+        }
+    }
+
+    private fun shopRow(cv: Canvas, ui: Ui, i: Int, icon: Int, title: String, sub: String, right: String, kind: Int) {
+        val r = Layout.SHOP_ROWS[i]
+        val dy = 3f * ui.pr(BTN_SHOP_ITEM + i)
+        val p = g.p
+        p.style = Paint.Style.FILL; p.shader = null
+        p.color = Theme.alpha(Theme.BLACK, 70); g.rect.set(r[0], r[1] + 5f, r[2], r[3] + 5f); cv.drawRoundRect(g.rect, 18f, 18f, p)
+        p.color = Theme.cardFace; g.rect.set(r[0], r[1] + dy, r[2], r[3] + dy); cv.drawRoundRect(g.rect, 18f, 18f, p)
+        p.color = Theme.alpha(Theme.WHITE, 22); g.rect.set(r[0] + 3f, r[1] + dy + 3f, r[2] - 3f, r[1] + dy + (r[3] - r[1]) * 0.45f); cv.drawRoundRect(g.rect, 15f, 15f, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = 2f; p.color = Theme.cardEdge; g.rect.set(r[0], r[1] + dy, r[2], r[3] + dy); cv.drawRoundRect(g.rect, 18f, 18f, p)
+        val cy = (r[1] + r[3]) / 2f + dy
+        shopIcon(cv, icon, 42f, cy)
+        g.text(cv, title, 68f, cy - 3f, 15f, Theme.WHITE, Theme.fontBlack, Paint.Align.LEFT, shadow = false)
+        g.text(cv, sub, 68f, cy + 14f, 11.5f, Theme.alpha(Theme.WHITE, 200), Theme.fontMedium, Paint.Align.LEFT, shadow = false)
+        g.button(cv, 248f, cy - 15f, 338f, cy + 15f, right, kind, 0f)
+    }
+
+    private fun offerTitle(o: Offer) = when (o.sku) {
+        SKU_STARTER -> tr("Стартовый набор", "Starter pack")
+        SKU_NOADS -> tr("Без рекламы", "No ads")
+        SKU_HINTS -> tr("Подсказки ×${o.prize.aids[AID_HINT]}", "Hints ×${o.prize.aids[AID_HINT]}")
+        SKU_UNDOS -> tr("Отмены хода ×${o.prize.aids[AID_UNDO]}", "Undos ×${o.prize.aids[AID_UNDO]}")
+        SKU_SHUFFLES -> tr("Перемешать ×${o.prize.aids[AID_SHUFFLE]}", "Shuffles ×${o.prize.aids[AID_SHUFFLE]}")
+        SKU_CLEARS -> tr("Очистка ленты ×${o.prize.aids[AID_CLEAR]}", "Belt clears ×${o.prize.aids[AID_CLEAR]}")
+        else -> tr("${o.prize.coins} монет", "${o.prize.coins} coins")
+    }
+
+    private fun offerSub(o: Offer) = when (o.sku) {
+        SKU_STARTER -> tr("300 монет и все помощники", "300 coins and every helper")
+        SKU_NOADS -> tr("Без рекламы между уровнями", "No ads between levels")
+        SKU_COINS_S -> tr("Горсть монет", "A handful of coins")
+        SKU_COINS_M -> tr("Выгоднее", "Better value")
+        SKU_COINS_L -> tr("Самый выгодный", "Best value")
+        SKU_HINTS -> tr("Лампочка покажет ход", "The bulb shows a move")
+        SKU_UNDOS -> tr("Вернуть ход назад", "Take a move back")
+        SKU_SHUFFLES -> tr("Новая раздача лотков", "A fresh deal of trays")
+        else -> tr("Метла для ленты", "A broom for the belt")
+    }
+
+    fun shop(cv: Canvas, ui: Ui, billing: Billing, adReady: Boolean, freeLeft: Int) {
+        g.roundButton(cv, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R, ui.pr(BTN_BACK)); g.back(cv, Layout.HUD_L_X, Layout.HUD_Y)
+        g.text(cv, tr("Магазин", "Shop"), 180f, 49f, 26f)
+        g.coinPill(cv, 296f, 40f, progress.coins)
+        val msgA = (3.5f - (ui.clock - ui.menuMsgAt)).coerceIn(0f, 1f)
+        if (msgA > 0f) g.text(cv, ui.menuMsg, 180f, 76f, 13f, Theme.alpha(Theme.accentText, (msgA * 255).toInt()), Theme.fontMedium, shadow = false)
+
+        val videoSub = when {
+            !adReady -> tr("Видео пока недоступно", "No video right now")
+            freeLeft <= 0 -> tr("Лимит на сегодня, приходи завтра", "Daily limit reached, come back tomorrow")
+            else -> tr("Смотри видео: +${Shop.FREE_COINS} · ещё $freeLeft", "Watch a video: +${Shop.FREE_COINS} · $freeLeft left")
+        }
+        val videoOn = adReady && freeLeft > 0
+        shopRow(cv, ui, 0, ICON_COIN, tr("Бесплатные монеты", "Free coins"), videoSub, if (videoOn) tr("Видео", "Video") else "—", if (videoOn) 0 else 1)
+        for ((k, o) in Shop.offers.withIndex()) {
+            val price = billing.price(o.sku)
+            val owned = progress.owned(o.sku)
+            val right = if (owned) tr("Есть", "Owned") else price ?: "…"
+            shopRow(cv, ui, k + 1, o.icon, offerTitle(o), offerSub(o), right, if (owned || price == null) 1 else 0)
+        }
+        val b = Layout.SHOP_RESTORE
+        g.button(cv, b[0], b[1], b[2], b[3], tr("Восстановить покупки", "Restore purchases"), 1, ui.pr(BTN_RESTORE))
+    }
+
+    // ---------- тестовая реклама (только в отладочных сборках) ----------
+
+    fun fakeAd(cv: Canvas, ui: Ui, t: Float, interstitial: Boolean) {
+        val p = g.p
+        p.style = Paint.Style.FILL; p.shader = null
+        p.color = Theme.alpha(0xFF0A1535.toInt(), 245); cv.drawRect(-500f, -500f, W + 500f, H + 500f, p)
+        g.text(cv, tr("Тестовая реклама", "Test ad"), 180f, 250f, 30f, Theme.WHITE)
+        g.text(cv, tr("В релизной сборке здесь настоящая", "A real ad plays here in the"), 180f, 290f, 14f, Theme.alpha(Theme.WHITE, 200), Theme.fontMedium, shadow = false)
+        g.text(cv, tr("реклама. Эта заглушка денег не приносит.", "release build. This stub earns nothing."), 180f, 312f, 14f, Theme.alpha(Theme.WHITE, 200), Theme.fontMedium, shadow = false)
+        val left = 3f - t
+        if (left > 0f) g.text(cv, tr("Можно закрыть через ${(left + 0.99f).toInt()}", "You can close it in ${(left + 0.99f).toInt()}"), 180f, 470f, 17f, Theme.GOLD, shadow = false)
+        else {
+            val b = Layout.AD_CLOSE
+            g.button(cv, b[0], b[1], b[2], b[3], if (interstitial) tr("Закрыть", "Close") else tr("Забрать награду", "Claim reward"), 0, ui.pr(BTN_AD_CLOSE))
+        }
+    }
+
     // ---------- как играть ----------
 
     private val rulesRu = listOf(
         "Нажми на лоток: шарики посыплются" to "в воронку и поедут по конвейеру.",
         "Шарик сам влетит в коробку своего" to "цвета, когда проедет мимо. Нужно по 3.",
-        "Золотая стрелка между лотками: тап по" to "ведущему запускает и соседа тоже.",
-        "Замок: коробка откроется после того," to "как соберётся первая любая коробка.",
+        "Серый лоток «?»: цвет станет виден," to "когда он выйдет вперёд колонки.",
+        "Золотая стрелка между лотками: тап по" to "ведущему запускает и ведомого. Назад нет.",
         "Лента забита, и ничего не подходит —" to "проигрыш. Думай, что и когда сыпать.",
-        "Лампочка подскажет лучший ход, ракета" to "закроет коробку, «Вернуть» разгрузит ленту.",
-        "Звёзды: 3 — без помощи, 2 — до двух" to "раз (подсказки, бустеры), иначе 1.",
+        "Внизу: лампочка, отмена хода, перемешать" to "лотки, очистить ленту. Открываются уроками.",
+        "Звёзды: 3 — без помощи, 2 — до двух" to "раз (подсказки, помощники), иначе 1.",
     )
     private val rulesEn = listOf(
         "Tap a tray: its beads pour" to "into the funnel and ride the belt.",
         "A bead jumps into the box of its" to "color as it passes by. Each needs 3.",
-        "Golden arrow between trays: tapping" to "the leading one launches both.",
-        "Padlock: the box opens once any" to "other box has been filled.",
+        "Grey tray with ?: its color shows" to "once it reaches the front of the column.",
+        "Golden arrow between trays: tapping" to "the leader launches the follower, never back.",
         "Belt full and nothing matches —" to "you lose. Plan what to pour and when.",
-        "The bulb shows the best move, the" to "rocket fills a box, Return clears the belt.",
-        "Stars: 3 — no help, 2 — up to two" to "uses (hints, boosters), otherwise 1.",
+        "Below: bulb, undo, shuffle trays," to "clear the belt. Unlocked by lessons.",
+        "Stars: 3 — no help, 2 — up to two" to "uses (hints, helpers), otherwise 1.",
     )
 
     fun help(cv: Canvas, ui: Ui) {
