@@ -7,7 +7,12 @@ fun audit(l: Level): List<String> {
     val e = ArrayList<String>()
     val s = Levels.spec(l.id)
     val tray = IntArray(COLOR_COUNT); val box = IntArray(COLOR_COUNT)
-    l.columns.flatten().forEach { tray[it.c] += it.n; if (it.n !in 3..6) e.add("лоток ${it.n}") }
+    l.columns.flatten().forEach { t ->
+        if (t.n !in 3..6) e.add("лоток ${t.n}")
+        for (k in 0 until t.n) tray[t.ballColor(k)]++
+        if (t.n2 > 0 && (t.c2 < 0 || t.c2 == t.c || t.n2 >= t.n - 1)) e.add("плохой двухцветный лоток")
+        if (t.n2 == 0 && t.c2 >= 0) e.add("c2 без n2")
+    }
     l.boxes.forEach { box[it]++ }
     for (c in 0 until COLOR_COUNT) if (tray[c] != box[c] * BOX) e.add("баланс цвета $c")
     if (l.boxes.size != s.colors * s.perColor) e.add("число коробок")
@@ -23,6 +28,7 @@ fun audit(l: Level): List<String> {
         if (t.pid == 0 && t.arrow != 0) e.add("стрелка без пары")
         if (t.pid != 0) pos.getOrPut(t.pid) { ArrayList() }.add(Triple(ci, ti, t))
         if (t.arrow !in 0..2) e.add("arrow=${t.arrow}")
+        if (t.pid != 0 && t.lock != 0) e.add("цепь на лотке из пары")
     } }
     if (pos.size != s.pairs) e.add("пар ${pos.size}, надо ${s.pairs}")
     for ((pid, v) in pos) {
@@ -43,6 +49,17 @@ fun audit(l: Level): List<String> {
         }
         if (!active) e.add("учебная связь не стоит впереди")
     }
+    // новые усложнения
+    val flat = l.columns.flatten()
+    if (flat.count { it.mixed } != 2 * s.swaps) e.add("двухцветных ${flat.count { it.mixed }}, надо ${2 * s.swaps}")
+    val chained = flat.filter { it.lock > 0 }
+    if (chained.size != s.chains) e.add("цепей ${chained.size}, надо ${s.chains}")
+    if (chained.any { it.lock > s.maxLock }) e.add("цепь тяжелее ${s.maxLock}")
+    if (s.mysteryShare > 0.0 && (l.mystery.size < 2 || l.mystery.any { it < SLOTS || it >= l.boxes.size })) e.add("скрытые коробки")
+    if (s.mysteryShare == 0.0 && l.mystery.isNotEmpty()) e.add("скрытые коробки до урока")
+    if (l.id == Lessons.all[LS_MIXED].level && l.columns.none { it[0].mixed }) e.add("учебный двухцветный лоток не впереди")
+    if (l.id == Lessons.all[LS_CHAIN].level && l.columns.none { it[0].lock == 1 }) e.add("учебная цепь не впереди")
+    if (l.columns.all { it[0].lock > 0 }) e.add("все головы в цепях")
     return e
 }
 
@@ -54,7 +71,7 @@ fun play(level: Level, seed: Long): Boolean {
         idle += dt
         if (idle > 0.4f && Hints.calm(g)) {
             var col = Hints.advise(g).col
-            if (col < 0) col = g.cols.indices.firstOrNull { g.cols[it].isNotEmpty() } ?: -1
+            if (col < 0) col = g.cols.indices.firstOrNull { g.cols[it].isNotEmpty() && g.cols[it][0].lock <= g.done } ?: -1
             if (col >= 0) { g.tapColumn(col); idle = 0f }
         }
         g.update(dt); t += dt
@@ -73,16 +90,25 @@ fun pass(id: Int, attempt: Int, belt: Int): Boolean {
     return true
 }
 
+/** Нижняя граница ленты: у первых 50 уровней плавно падала с 15; дальше не ниже минимума модели + запас. */
+fun floorBelt(id: Int, mc: Int) = maxOf(if (id <= 50) 15 - id / 17 else 12, mc)
+
+/**
+ * Аргументы: от, до, файл результата, [предел узлов модели].
+ * Строка результата: «уровень попытка лента минимум» или «уровень FAIL».
+ */
 fun main(args: Array<String>) {
     val from = args[0].toInt(); val to = args[1].toInt(); val out = File(args[2])
+    val limit = if (args.size > 3) args[3].toInt() else 60_000
     for (id in from..to) {
+        val t0 = System.currentTimeMillis()
         var done = false
         for (attempt in 0..30) {
             val l = Levels.layout(id, attempt, 30)
             val bad = audit(l)
             if (bad.isNotEmpty()) { System.err.println("уровень $id попытка $attempt: $bad"); continue }
-            val mc = Planner.minCap(l) ?: continue
-            var b = maxOf(15 - id / 17, mc)
+            val mc = Planner.minCap(l, 30, limit) ?: continue
+            var b = floorBelt(id, mc)
             var found = -1
             while (b <= 30) {
                 if (pass(id, attempt, b) && pass(id, attempt, b + 1).let { it || b + 1 > 30 }) { found = b; break }
@@ -91,8 +117,9 @@ fun main(args: Array<String>) {
             if (found < 0) continue
             val fin = minOf(30, found + 1)           // итог — вторая из двух подряд проходящих лент
             out.appendText("$id $attempt $fin $mc\n")
+            System.err.println("уровень $id: попытка $attempt лента $fin (минимум модели $mc) за ${(System.currentTimeMillis() - t0) / 1000}с")
             done = true; break
         }
-        if (!done) out.appendText("$id FAIL\n")
+        if (!done) { out.appendText("$id FAIL\n"); System.err.println("уровень $id: FAIL") }
     }
 }

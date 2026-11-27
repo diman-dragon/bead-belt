@@ -5,13 +5,23 @@ import kotlin.math.atan2
 import kotlin.math.max
 import kotlin.math.min
 
-/** Лоток. `hidden` — цвет показывается, только когда лоток выйдет вперёд колонки. d — отображаемая глубина. */
-class Tray(val c: Int, n0: Int, val arrow: Int = 0, val pid: Int = 0, val hidden: Boolean = false) { var n = n0; var d = 0f }
+/**
+ * Лоток. `hidden` — цвет показывается, только когда лоток выйдет вперёд колонки. d — отображаемая глубина.
+ * `lock` — цепь: лоток не высыпается, пока собрано меньше `lock` коробок. `n2` последних шариков имеют цвет `c2` (двухцветный лоток).
+ */
+class Tray(val c: Int, n0: Int, val arrow: Int = 0, val pid: Int = 0, val hidden: Boolean = false,
+           val lock: Int = 0, val c2: Int = -1, val n2: Int = 0) {
+    var n = n0; var d = 0f
+    fun ballColor(k: Int) = if (k >= n - n2) c2 else c
+    val mixed: Boolean get() = n2 > 0
+}
 /**
  * Коробка. n — шарики внутри, res — летят прямо сейчас, slot — место (0..3).
  * Собранная коробка тут же уступает место следующей и дозавершается в списке [Game.popping].
  */
 class Box(val c: Int, val slot: Int) { var n = 0; var res = 0; var pop = -1f; var enter = 1f; var locked = false
+    /** Цвет скрыт («?»), пока коробка ждёт в очереди; на месте она показывается как обычная. */
+    var hidden = false
     /** Толчок от упавшего шарика: 1 → 0, коробка слегка проседает и пружинит. */
     var bump = 0f
     var smokeT = 0f
@@ -37,11 +47,13 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
     }
 
     val cols: List<MutableList<Tray>> =
-        level.columns.map { col -> col.map { Tray(it.c, it.n, it.arrow, it.pid, it.hidden) }.toMutableList() }
+        level.columns.map { col -> col.map { Tray(it.c, it.n, it.arrow, it.pid, it.hidden, it.lock, it.c2, it.n2) }.toMutableList() }
     val colX = FloatArray(cols.size) { 180f + (it - (cols.size - 1) / 2f) * 84f }
     val boxX = FloatArray(SLOTS) { 54f + 84f * it }
     /** Очереди коробок по местам: вторая и далее (первая стоит в [boxes]). */
-    val queues: List<ArrayDeque<Box>> = Levels.stacksOf(level.boxes).mapIndexed { i, st -> ArrayDeque(st.map { Box(it, i) }) }
+    val queues: List<ArrayDeque<Box>> = List(SLOTS) { ArrayDeque<Box>() }.also { q ->
+        level.boxes.forEachIndexed { i, c -> q[i % SLOTS].addLast(Box(c, i % SLOTS).also { b -> b.hidden = i in level.mystery }) }
+    }
     val boxes = arrayOfNulls<Box>(SLOTS).also { arr ->
         for (i in 0 until SLOTS) arr[i] = queues[i].removeFirstOrNull()?.also { b -> b.locked = i == level.elevator }
     }
@@ -52,7 +64,7 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
     val n = level.belt
     val sp = Geo.L / n
     val slots = IntArray(n) { -1 }
-    /** Сколько раз игрок пользовался помощниками (кроме лампочки) и «ещё шансом» на этом уровне. */
+    /** Сколько раз игрок пользовался помощниками (кроме подсказки) и «ещё шансом» на этом уровне. */
     var assists = 0
     val born = FloatArray(n)
     /** Откуда шарик начал падать с горловины воронки на ленту (для отрисовки). */
@@ -74,6 +86,8 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
     val total = level.boxes.size
     /** Тряска экрана: 0..1, сама затухает. */
     var shake = 0f
+    /** Дрожь лотка в цепи, по которому нажали слишком рано: 1 → 0 по колонкам. */
+    val rattle = FloatArray(cols.size)
 
     private val physics = HopperPhysics(hopper)
     private val pt = FloatArray(2)
@@ -100,6 +114,7 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
     /** Тап по колонке: лоток высыпается; если он ведущий в паре и ведомый впереди своей колонки — высыпается и ведомый. */
     fun tapColumn(i: Int): Boolean {
         if (state != State.PLAY || i !in cols.indices || cols[i].isEmpty()) return false
+        if (cols[i][0].lock > done) { rattle[i] = 1f; onEvent(EV_CLINK, 2); return false }      // цепь ещё держит лоток
         val snap = takeSnap()
         val first = cols[i].removeAt(0)
         release(first, colX[i])
@@ -112,7 +127,7 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
     }
 
     private fun release(t: Tray, x: Float) {
-        repeat(t.n) { spawnQ.addLast(Spawn(t.c, x)) }
+        for (k in 0 until t.n) spawnQ.addLast(Spawn(t.ballColor(k), x))
         leaving.add(Leaving(t, x))
     }
 
@@ -136,9 +151,9 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
     /** Положение до последнего хода (тап, «очистить», «перемешать»): к нему возвращает «отменить». */
     private var lastMove: Snap? = null
 
-    private fun copyTray(t: Tray) = Tray(t.c, t.n, t.arrow, t.pid, t.hidden).also { it.d = t.d }
+    private fun copyTray(t: Tray) = Tray(t.c, t.n, t.arrow, t.pid, t.hidden, t.lock, t.c2, t.n2).also { it.d = t.d }
     private fun copyBox(b: Box) = Box(b.c, b.slot).also {
-        it.n = b.n; it.res = b.res; it.pop = b.pop; it.enter = b.enter; it.locked = b.locked; it.bump = b.bump; it.smokeT = b.smokeT
+        it.n = b.n; it.res = b.res; it.pop = b.pop; it.enter = b.enter; it.locked = b.locked; it.bump = b.bump; it.smokeT = b.smokeT; it.hidden = b.hidden
     }
 
     /** Полный снимок партии: лотки, коробки, шарики на ленте, в воронке и в полёте. Копии независимы от живых объектов. */
@@ -214,7 +229,7 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
         for (attempt in 0 until SHUFFLE_TRIES) {
             java.util.Collections.shuffle(all, rnd)
             for (c in cols) c.clear()
-            all.forEachIndexed { i, t -> cols[i % cols.size].add(Tray(t.c, t.n, 0, 0, t.hidden)) }
+            all.forEachIndexed { i, t -> cols[i % cols.size].add(Tray(t.c, t.n, 0, 0, t.hidden, t.lock, t.c2, t.n2)) }
             for (c in cols) c.forEachIndexed { i, t -> t.d = i.toFloat() }
             val (b, st) = Hints.snapshot(this)
             if (st.done == b.totalBoxes || Planner.solve(b, st, SHUFFLE_NODES).win) break
@@ -250,7 +265,13 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
     }
 
     /** Можно ли продолжить после поражения: на ленте есть шарики, которые вернутся в лотки. */
-    fun canRevive(): Boolean { if (state != State.LOST) return false; for (c in slots) if (c >= 0) return true; return false }
+    fun canRevive(): Boolean {
+        if (state != State.LOST) return false
+        // вернувшиеся шарики встают в конец колонок: если все головы в цепях, шанс ничего не изменит
+        if (!cols.any { it.isEmpty() || it[0].lock <= done }) return false
+        for (c in slots) if (c >= 0) return true
+        return false
+    }
 
     /** «Ещё шанс» после поражения: все ничьи шарики с ленты возвращаются лотками, игра продолжается. */
     fun revive(): Boolean {
@@ -275,6 +296,7 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
         while (pi >= 0) { val p = popups[pi]; p.t += dt; if (p.t >= 1f) popups.removeAt(pi); pi-- }
         fx.update(dt)
         shake = max(0f, shake - dt * 2.2f)
+        for (i in rattle.indices) if (rattle[i] > 0f) rattle[i] = max(0f, rattle[i] - dt * 3.5f)
         comboT -= dt
         if (comboT <= 0f) pickCombo = 0
 
@@ -413,7 +435,8 @@ class Game(val level: Level, seed: Long = level.id.toLong(), private val onEvent
         val anyMatch = slots.any { c -> c >= 0 && boxes.any { b -> b != null && b.c == c && !b.locked && b.committed < BOX } }
         val busy = anyMatch || flyers.isNotEmpty()
         val full = slots.none { it < 0 }
-        val noMoves = cols.all { it.isEmpty() } && spawnQ.isEmpty() && hopper.isEmpty()
+        // ходов нет, если колонки пусты или все головы в цепях, а собранных коробок для их снятия не хватает
+        val noMoves = cols.all { it.isEmpty() || it[0].lock > done } && spawnQ.isEmpty() && hopper.isEmpty()
         if (!busy && (full || noMoves)) stuckT += dt else stuckT = 0f
         if (stuckT > 0.9f) { state = State.LOST; shake = 0.6f; onEvent(EV_LOSE, 0) }
     }

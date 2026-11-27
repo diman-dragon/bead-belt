@@ -191,10 +191,17 @@ class Screens(private val g: Painter, private val progress: Progress, private va
     fun menu(cv: Canvas, ui: Ui) {
         val t = ui.clock
         val e = t - ui.menuAt                   // сколько секунд назад открыли меню: от этого идут анимации появления
-        if (playKey != progress.unlocked || labelsVer != Lang.version) {
-            playKey = progress.unlocked; labelsVer = Lang.version
-            playLabel = if (playKey == 1) tr("Играть", "Play") else tr("Играть · уровень $playKey", "Play · level $playKey")
-            levelsLabel = tr("Уровни  $playKey/$LEVEL_COUNT", "Levels  $playKey/$LEVEL_COUNT")
+        val allDone = progress.starsOf(LEVEL_COUNT) > 0
+        val key = if (allDone) -1 else progress.unlocked
+        if (playKey != key || labelsVer != Lang.version) {
+            playKey = key; labelsVer = Lang.version
+            playLabel = when {
+                allDone -> tr("Все уровни пройдены", "All levels complete")
+                key == 1 -> tr("Играть", "Play")
+                else -> tr("Играть · уровень $key", "Play · level $key")
+            }
+            levelsLabel = if (allDone) tr("Уровни  $LEVEL_COUNT/$LEVEL_COUNT ★", "Levels  $LEVEL_COUNT/$LEVEL_COUNT ★")
+                          else tr("Уровни  $key/$LEVEL_COUNT", "Levels  $key/$LEVEL_COUNT")
         }
         // фон: медленно поднимающиеся шарики
         for (i in flX.indices) {
@@ -252,21 +259,6 @@ class Screens(private val g: Painter, private val progress: Progress, private va
             if (a > 0f && e > 1.2f) g.glint(cv, sparkX[i], sparkY[i], 8f + 6f * a, (a * a * 255).toInt())
         }
 
-        // конвейерная лента под прыгающими шариками
-        val beltA = easeOutBack(appear(e, 0.55f, 0.5f))
-        if (beltA > 0f) {
-            cv.save(); cv.translate(180f, 337f); cv.scale(beltA, beltA); cv.translate(-180f, -337f)
-            g.p.style = Paint.Style.FILL; g.p.shader = null
-            g.p.color = Theme.beltFace; g.rect.set(34f, 330f, 326f, 344f); cv.drawRoundRect(g.rect, 7f, 7f, g.p)
-            g.p.color = Theme.alpha(Theme.WHITE, 46)
-            for (k in 0 until 15) {
-                val x = 40f + (k * 20f + t * 40f) % 300f
-                if (x + 8f < 322f) { g.rect.set(x, 334f, x + 8f, 340f); cv.drawRoundRect(g.rect, 2f, 2f, g.p) }
-            }
-            g.p.style = Paint.Style.STROKE; g.p.strokeWidth = 2f; g.p.color = Theme.troughRim
-            g.rect.set(34f, 330f, 326f, 344f); cv.drawRoundRect(g.rect, 7f, 7f, g.p)
-            cv.restore()
-        }
         for (i in 0 until 7) {                     // прыгающие шарики: появляются по очереди, потом скачут волной
             val ua = appear(e, 0.6f + i * 0.07f, 0.4f)
             if (ua <= 0f) continue
@@ -278,22 +270,13 @@ class Screens(private val g: Painter, private val progress: Progress, private va
             g.marble(cv, x, 298f - bob2 * 22f - (1f - ua) * 60f, 16f * sc, (i + (t / 2.4f).toInt()) % 6)
         }
 
-        // кнопки выезжают снизу по очереди; на главной бегает блик
-        val pa = appear(e, 0.75f, 0.5f)
-        val pulse = 1f + 0.022f * sin(t * 3.4f)
-        val r = Layout.MENU_PLAY; val hh = (r[3] - r[1]) / 2f
-        cv.save(); cv.translate(180f, (r[1] + r[3]) / 2f + (1f - easeOutBack(pa)) * 90f); cv.scale(pulse, pulse)
-        g.button(cv, r[0] - 180f, -hh, r[2] - 180f, hh, playLabel, 0, ui.pr(BTN_PLAY))
-        buttonShine(cv, r[0] - 180f, -hh, r[2] - 180f, hh, t, 0.6f)
-        cv.restore()
-        val la = appear(e, 0.87f, 0.5f)
+        // кнопки стоят на своих местах с первого кадра (без выезда и пульса), по главной бегает блик
+        val r = Layout.MENU_PLAY
+        g.button(cv, r[0], r[1], r[2], r[3], playLabel, 0, ui.pr(BTN_PLAY))
+        buttonShine(cv, r[0], r[1], r[2], r[3], t, 0.6f)
         val l = Layout.MENU_LEVELS
-        cv.save(); cv.translate(0f, (1f - easeOutBack(la)) * 110f)
         g.button(cv, l[0], l[1], l[2], l[3], levelsLabel, 1, ui.pr(BTN_LEVELS))
-        cv.restore()
-
-        val ra = easeOutBack(appear(e, 1.0f, 0.5f))
-        val ry = Layout.MENU_SOUND_Y + (1f - ra) * 100f
+        val ry = Layout.MENU_SOUND_Y
         g.roundButton(cv, Layout.MENU_SOUND_X, ry, 24f, ui.pr(BTN_SOUND))
         g.speaker(cv, Layout.MENU_SOUND_X, ry, progress.sound)
         val ready = progress.giftReady()
@@ -422,7 +405,10 @@ class Screens(private val g: Painter, private val progress: Progress, private va
 
         // шапка
         g.roundButton(cv, Layout.HUD_L_X, Layout.HUD_Y, Layout.HUD_R, ui.pr(BTN_BACK)); g.back(cv, Layout.HUD_L_X, Layout.HUD_Y)
-        g.text(cv, tr("Уровни", "Levels"), 180f, 49f, 26f)
+        if (progress.starsOf(LEVEL_COUNT) > 0) {          // всё пройдено: это видно прямо в шапке
+            g.text(cv, tr("Все уровни пройдены!", "All levels complete!"), 180f, 44f, 20f, Theme.GOLD)
+            g.text(cv, "★ ${progress.totalStars}/${LEVEL_COUNT * 3}", 180f, 66f, 13f, Theme.alpha(Theme.WHITE, 210), Theme.fontMedium, shadow = false)
+        } else g.text(cv, tr("Уровни", "Levels"), 180f, 49f, 26f)
         g.coinPill(cv, 296f, 40f, progress.coins)
     }
 
@@ -497,10 +483,10 @@ class Screens(private val g: Painter, private val progress: Progress, private va
             p.color = Theme.alpha(Theme.WHITE, 50); g.rect.set(156f, iy - 27f, 204f, iy - 4f); cv.drawOval(g.rect, p)
             g.text(cv, "!", 180f, iy + 13f, 40f, Theme.WHITE, shadow = false)
         }
-        g.text(cv, if (won) tr("Готово!", "Done!") else tr("Конвейер забит", "Belt jammed"), 180f, c[1] + 124f, if (won) 32f else 27f, Theme.WHITE)
+        g.text(cv, if (won && last) tr("Все уровни пройдены!", "All levels complete!") else if (won) tr("Готово!", "Done!") else tr("Конвейер забит", "Belt jammed"), 180f, c[1] + 124f, if (won && last) 25f else if (won) 32f else 27f, if (won && last) Theme.GOLD else Theme.WHITE)
         val sub = when {
             !won -> tr("Нет подходящих коробок", "No matching boxes")
-            last -> tr("Все $LEVEL_COUNT уровней пройдены!", "All $LEVEL_COUNT levels complete!")
+            last -> tr("Ты прошёл все $LEVEL_COUNT уровней · ★ ${progress.totalStars}/${LEVEL_COUNT * 3}", "You beat all $LEVEL_COUNT levels · ★ ${progress.totalStars}/${LEVEL_COUNT * 3}")
             stars >= 3 -> tr("Чисто! Без подсказок", "Clean! No hints used")
             else -> tr("Уровень ${game.level.id} пройден", "Level ${game.level.id} complete")
         }
@@ -532,7 +518,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
             g.button(cv, d[0], d[1], d[2], d[3], tr("×2 видео", "×2 video"), 1, ui.pr(BTN_AD_DOUBLE))
         }
         val n = Layout.END_NEXT; val m = Layout.END_MENU
-        g.button(cv, n[0], n[1], n[2], n[3], if (won && !last) tr("Дальше", "Next") else tr("Ещё раз", "Retry"), 0, ui.pr(BTN_NEXT))
+        g.button(cv, n[0], n[1], n[2], n[3], if (won && !last) tr("Дальше", "Next") else if (won) tr("К уровням", "Levels") else tr("Ещё раз", "Retry"), 0, ui.pr(BTN_NEXT))
         g.button(cv, m[0], m[1], m[2], m[3], tr("Меню", "Menu"), 1, ui.pr(BTN_MENU))
         cv.restore()
     }
@@ -562,7 +548,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
     private fun shopIcon(cv: Canvas, icon: Int, x: Float, y: Float) {
         when (icon) {
             ICON_COIN -> g.coin(cv, x, y, 15f)
-            ICON_HINT -> g.bulb(cv, x, y, 1.15f)
+            ICON_HINT -> g.hint(cv, x, y, 1.15f)
             ICON_UNDO -> g.undo(cv, x, y, 1.2f)
             ICON_SHUFFLE -> g.shuffle(cv, x, y, 1.2f)
             ICON_CLEAR -> g.clear(cv, x, y, 1.2f)
@@ -607,7 +593,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         SKU_COINS_S -> tr("Горсть монет", "A handful of coins")
         SKU_COINS_M -> tr("Выгоднее", "Better value")
         SKU_COINS_L -> tr("Самый выгодный", "Best value")
-        SKU_HINTS -> tr("Лампочка покажет ход", "The bulb shows a move")
+        SKU_HINTS -> tr("Подсказка покажет ход", "The hint shows a move")
         SKU_UNDOS -> tr("Вернуть ход назад", "Take a move back")
         SKU_SHUFFLES -> tr("Новая раздача лотков", "A fresh deal of trays")
         else -> tr("Метла для ленты", "A broom for the belt")
@@ -661,18 +647,22 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         "Шарик сам влетит в коробку своего" to "цвета, когда проедет мимо. Нужно по 3.",
         "Серый лоток «?»: цвет станет виден," to "когда он выйдет вперёд колонки.",
         "Золотая стрелка между лотками: тап по" to "ведущему запускает и ведомого. Назад нет.",
+        "Лоток из двух цветов: шарики обоих" to "цветов ссыпаются на ленту вместе.",
+        "Лоток в цепи: откроется, когда соберёшь" to "столько коробок, сколько на значке.",
+        "Серая коробка «?»: цвет откроется," to "когда она выйдет вперёд своей стопки.",
         "Лента забита, и ничего не подходит —" to "проигрыш. Думай, что и когда сыпать.",
-        "Внизу: лампочка, отмена хода, перемешать" to "лотки, очистить ленту. Открываются уроками.",
-        "Звёзды: 3 — без помощи, 2 — до двух" to "раз (подсказки, помощники), иначе 1.",
+        "Внизу: подсказка, отмена хода, перемешать" to "лотки, очистить ленту. Открываются уроками.",
     )
     private val rulesEn = listOf(
         "Tap a tray: its beads pour" to "into the funnel and ride the belt.",
         "A bead jumps into the box of its" to "color as it passes by. Each needs 3.",
         "Grey tray with ?: its color shows" to "once it reaches the front of the column.",
         "Golden arrow between trays: tapping" to "the leader launches the follower, never back.",
+        "Two-color tray: beads of both colors" to "pour onto the belt together.",
+        "Chained tray: opens once you collect" to "as many boxes as the badge says.",
+        "Grey box with ?: its color shows" to "once it reaches the front of its stack.",
         "Belt full and nothing matches —" to "you lose. Plan what to pour and when.",
-        "Below: bulb, undo, shuffle trays," to "clear the belt. Unlocked by lessons.",
-        "Stars: 3 — no help, 2 — up to two" to "uses (hints, helpers), otherwise 1.",
+        "Below: hint, undo, shuffle trays," to "clear the belt. Unlocked by lessons.",
     )
 
     fun help(cv: Canvas, ui: Ui) {
@@ -680,14 +670,14 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         g.text(cv, tr("Как играть", "How to play"), 180f, 49f, 26f)
         val c = floatArrayOf(20f, 86f, 340f, 604f)
         cardFrame(cv, c)
-        var y = 128f
+        var y = 122f
         for ((i, r) in (if (Lang.ru) rulesRu else rulesEn).withIndex()) {
             g.p.style = Paint.Style.FILL; g.p.shader = null
             g.p.color = Theme.GOLD; cv.drawCircle(42f, y - 5f, 11f, g.p)
             g.text(cv, "${i + 1}", 42f, y, 14f, Theme.INK, shadow = false)
             g.text(cv, r.first, 62f, y - 4f, 13f, Theme.WHITE, Theme.fontMedium, Paint.Align.LEFT, shadow = false)
             g.text(cv, r.second, 62f, y + 15f, 13f, Theme.WHITE, Theme.fontMedium, Paint.Align.LEFT, shadow = false)
-            y += 68f
+            y += 56f
         }
     }
 }

@@ -1,7 +1,7 @@
 package dev.beadbelt.game
 
 // четыре помощника внизу экрана (порядок = порядок кнопок слева направо)
-const val AID_HINT = 0       // лампочка: показывает ход
+const val AID_HINT = 0       // подсказка: показывает ход
 const val AID_UNDO = 1       // отменить последний ход
 const val AID_SHUFFLE = 2    // перемешать лотки
 const val AID_CLEAR = 3      // очистить ленту: шарики с ленты возвращаются в лотки
@@ -16,6 +16,9 @@ const val LS_SHUFFLE = 4
 const val LS_HIDDEN = 5
 const val LS_LINKS = 6
 const val LS_LIFT = 7
+const val LS_MIXED = 8      // двухцветные лотки
+const val LS_CHAIN = 9      // лоток в цепи
+const val LS_MYSTERY = 10   // скрытые коробки
 
 /** Приз: монеты и штуки помощников (`aids[AID_*]`). */
 class Prize(val coins: Int = 0, hint: Int = 0, undo: Int = 0, shuffle: Int = 0, clear: Int = 0) {
@@ -31,7 +34,7 @@ class Prize(val coins: Int = 0, hint: Int = 0, undo: Int = 0, shuffle: Int = 0, 
 class Lesson(val id: Int, val level: Int, val aid: Int, val prize: Prize)
 
 object Lessons {
-    /** Все 8 уроков помещаются в первые 50 уровней: дальше новых механик нет, растёт только сложность. */
+    /** Одиннадцать уроков: помощники и первые правила поля в первых 50 уровнях, новые усложнения (два цвета, цепь, скрытые коробки) на 56, 76 и 100-м. */
     val all = listOf(
         Lesson(LS_BASICS, 1, -1, Prize(coins = 30)),
         Lesson(LS_BULB, 4, AID_HINT, Prize(hint = 3)),
@@ -41,6 +44,9 @@ object Lessons {
         Lesson(LS_HIDDEN, 20, -1, Prize(coins = 50, undo = 1)),
         Lesson(LS_LINKS, 26, -1, Prize(coins = 60, shuffle = 1)),
         Lesson(LS_LIFT, 34, -1, Prize(coins = 60, clear = 1)),
+        Lesson(LS_MIXED, 56, -1, Prize(coins = 80, hint = 1)),
+        Lesson(LS_CHAIN, 76, -1, Prize(coins = 80, undo = 1)),
+        Lesson(LS_MYSTERY, 100, -1, Prize(coins = 100, shuffle = 1)),
     )
 
     /** На учебных уровнях лента просторнее: игрок осваивает новое, а не борется за место. */

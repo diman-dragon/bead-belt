@@ -64,11 +64,14 @@ object Layout {
 
     // игра: шапка прижата к самому верху; под названием уровня — монеты (нажатие открывает магазин)
     const val PLAY_Y = 24f
+    /** Слева в игре два кружка: назад в меню и звук. */
+    const val PLAY_BACK_X = 30f
+    const val PLAY_SOUND_X = 76f
     const val PLAY_R = 20f
     const val PLAY_COIN_Y = 57f
     val PLAY_COIN = floatArrayOf(124f, 39f, 236f, 75f)
 
-    // нижний ряд: четыре помощника (лампочка, отменить, перемешать, очистить ленту)
+    // нижний ряд: четыре помощника (подсказка, отменить, перемешать, очистить ленту)
     const val BOOST_R = 26f
     const val AID_X0 = 54f
     const val AID_DX = 84f

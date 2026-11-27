@@ -13,16 +13,29 @@ import kotlin.math.min
  */
 class TrayDef(val c: Int, val n: Int, val arrow: Int = 0, val pid: Int = 0,
               /** Цвет скрыт («?»), пока лоток не выйдет вперёд своей колонки. Бывает только у лотков не в самом начале колонки. */
-              val hidden: Boolean = false)
-
-/** elevator — индекс стопки коробок «на лифте»: первая коробка закрыта замком, пока не соберётся любая другая. */
-class Level(val id: Int, val columns: List<List<TrayDef>>, val boxes: List<Int>, val belt: Int, val elevator: Int = -1)
+              val hidden: Boolean = false,
+              /** Цепь: лоток нельзя высыпать, пока не собрано `lock` коробок (0 — цепи нет). Лоток в связанной паре цепей не носит. */
+              val lock: Int = 0,
+              /** Двухцветный лоток: последние `n2` шариков из `n` имеют цвет `c2`, остальные цвета `c` (`n2` = 0 — лоток обычный). */
+              val c2: Int = -1, val n2: Int = 0) {
+    /** Цвет шарика с номером `k` (они высыпаются по порядку 0..n-1). */
+    fun ballColor(k: Int) = if (k >= n - n2) c2 else c
+    val mixed: Boolean get() = n2 > 0
+}
 
 /**
- * Сейчас в игре 50 уровней, но кривая сложности (`Levels.spec`) рассчитана на 500: первые 50 — это самое начало
- * пути, поэтому всё растёт очень медленно. Чтобы добавить уровни, достаточно поднять число и подобрать ленты (tools/README.md).
+ * elevator — индекс стопки коробок «на лифте»: первая коробка закрыта замком, пока не соберётся любая другая.
+ * mystery — номера в списке `boxes` (кроме первых четырёх), цвет которых скрыт («?»), пока коробка не выйдет на место.
  */
-const val LEVEL_COUNT = 50
+class Level(val id: Int, val columns: List<List<TrayDef>>, val boxes: List<Int>, val belt: Int, val elevator: Int = -1,
+            val mystery: Set<Int> = emptySet())
+
+/**
+ * В игре 200 уровней. Первые 50 остались такими, какими были (те же раскладки и ленты), дальше кривая сложности
+ * (`Levels.spec`) растёт до максимума к 200-му: больше цветов и коробок, больше связей и новые усложнения
+ * (двухцветные лотки, цепи, скрытые коробки). Ленты подбирает `tools/Tune.kt` (tools/README.md).
+ */
+const val LEVEL_COUNT = 200
 const val BOX = 3          // шариков в коробке
 const val SLOTS = 4        // активных коробок
 const val COLOR_COUNT = 8
@@ -77,29 +90,49 @@ class Spec(
     val hiddenShare: Double,
     /** Учебный уровень про скрытый цвет: два скрытых лотка стоят сразу за первыми. */
     val hiddenLesson: Boolean,
+    /** Сколько раз два лотка разных цветов меняются шариками: каждый обмен даёт два двухцветных лотка. */
+    val swaps: Int = 0,
+    /** Сколько лотков закованы в цепь и какое наибольшее число коробок надо собрать, чтобы цепь спала. */
+    val chains: Int = 0,
+    val maxLock: Int = 0,
+    /** Доля скрытых («?») коробок среди тех, что ждут в очереди. */
+    val mysteryShare: Double = 0.0,
 )
 
 object Levels {
     /**
-     * Кривая сложности на все 500 уровней (в игре пока первые 50). Новые механики вводятся уроками (`Lessons`),
-     * дальше растёт только сложность, и очень плавно:
-     *  цветов 3 (до 9-го), 4 (до 24-го), 5 (до 79-го), 6, 7, 8 (с 250-го);
-     *  коробок на цвет 2 (до 12-го), 3 (до 89-го), 4, 5, 6 (с 330-го);
-     *  связанных пар 0 (до урока связей), 1, 2 (с 85-го), 3 (с 165-го), 4 (с 285-го);
-     *  скрытых лотков от 12% до 50%; лифт каждый третий уровень, с 120-го — каждый второй.
-     * Связи односторонние: ведущий → ведомый.
+     * Кривая сложности на 200 уровней. Новые механики вводятся уроками (`Lessons`), дальше растёт только сложность,
+     * по одной ступеньке за раз (`LevelsTest.difficultyCurveIsGentleAndMonotonic`):
+     *  цветов 3 (до 9-го), 4 (до 24-го), 5 (до 69-го), 6, 7 (с 120-го), 8 (с 165-го);
+     *  коробок на цвет 2 (до 12-го), 3 (до 94-го), 4, 5 (с 150-го);
+     *  связанных пар 0 (до урока связей), 1, 2 (с 85-го), 3 (с 140-го), 4 (с 185-го);
+     *  скрытых лотков от 12% до 45%; лифт каждый третий уровень, с 120-го через один;
+     *  двухцветные лотки (с урока «Два цвета»), цепи (с урока «Цепь»), скрытые коробки (с урока «Тайна»): число растёт к 200-му.
+     * Связи односторонние: ведущий → ведомый. Первые 50 уровней совпадают с прежней версией до последнего шарика.
      */
     fun spec(id: Int): Spec {
-        val colors = when { id < 10 -> 3; id < 25 -> 4; id < 80 -> 5; id < 150 -> 6; id < 250 -> 7; else -> COLOR_COUNT }
-        val perColor = when { id < 13 -> 2; id < 90 -> 3; id < 200 -> 4; id < 330 -> 5; else -> 6 }
+        val colors = when { id < 10 -> 3; id < 25 -> 4; id < 70 -> 5; id < 120 -> 6; id < 165 -> 7; else -> COLOR_COUNT }
+        val perColor = when { id < 13 -> 2; id < 95 -> 3; id < 150 -> 4; else -> 5 }
         val linksAt = Lessons.all[LS_LINKS].level
-        val pairs = when { id < linksAt -> 0; id < 85 -> 1; id < 165 -> 2; id < 285 -> 3; else -> 4 }
+        val pairs = when { id < linksAt -> 0; id < 85 -> 1; id < 140 -> 2; id < 185 -> 3; else -> 4 }
         val liftAt = Lessons.all[LS_LIFT].level
         val lift = id >= liftAt && (if (id < 120) (id - liftAt) % 3 == 0 else id % 2 == 0)
         val sizeHi = when { id <= 15 -> 4; id <= 100 -> 5; else -> 6 }
         val hiddenAt = Lessons.all[LS_HIDDEN].level
-        val share = if (id < hiddenAt) 0.0 else 0.12 + 0.38 * (id - hiddenAt) / (500.0 - hiddenAt)
-        return Spec(colors, perColor, if (id <= 5) 3 else 4, pairs, id < linksAt + 20, id in linksAt until linksAt + 6, lift, sizeHi, share, id == hiddenAt)
+        val share = when {
+            id < hiddenAt -> 0.0
+            id <= 50 -> 0.12 + 0.38 * (id - hiddenAt) / (500.0 - hiddenAt)
+            else -> { val at50 = 0.12 + 0.38 * (50 - hiddenAt) / (500.0 - hiddenAt); at50 + (0.45 - at50) * (id - 50) / 150.0 }
+        }
+        val mixedAt = Lessons.all[LS_MIXED].level
+        val chainAt = Lessons.all[LS_CHAIN].level
+        val mysteryAt = Lessons.all[LS_MYSTERY].level
+        val swaps = if (id < mixedAt) 0 else 1 + (id - mixedAt) / 30
+        val chains = if (id < chainAt) 0 else 1 + (id - chainAt) / 40
+        val maxLock = if (id < chainAt) 0 else 2 + (id - chainAt) / 30
+        val mystery = if (id < mysteryAt) 0.0 else 0.25 + 0.35 * (id - mysteryAt) / 100.0
+        return Spec(colors, perColor, if (id <= 5) 3 else 4, pairs, id < linksAt + 20, id in linksAt until linksAt + 6, lift, sizeHi, share, id == hiddenAt,
+            swaps, chains, maxLock, mystery)
     }
 
     fun stacksOf(boxes: List<Int>): List<ArrayDeque<Int>> {
@@ -209,6 +242,79 @@ object Levels {
     }
 
     /**
+     * Двухцветные лотки. Два лотка разных цветов обмениваются 1–2 шариками: оба становятся двухцветными, размеры лотков
+     * и число шариков каждого цвета не меняются, так что баланс шариков и коробок сохраняется.
+     * На учебном уровне первый обмен ставит два двухцветных лотка в начало колонок, чтобы они сразу бросались в глаза.
+     */
+    private fun mixTrays(cols: List<MutableList<TrayDef>>, spec: Spec, lesson: Boolean, r: Rng) {
+        val used = HashSet<Int>()
+        fun key(ci: Int, ti: Int) = ci * 1000 + ti
+        fun swap(ci: Int, ti: Int, cj: Int, tj: Int, m: Int) {
+            val a = cols[ci][ti]; val b = cols[cj][tj]
+            cols[ci][ti] = TrayDef(a.c, a.n, a.arrow, a.pid, a.hidden, a.lock, b.c, m)
+            cols[cj][tj] = TrayDef(b.c, b.n, b.arrow, b.pid, b.hidden, b.lock, a.c, m)
+            used.add(key(ci, ti)); used.add(key(cj, tj))
+        }
+        for (k in 0 until spec.swaps) {
+            if (k == 0 && lesson) {
+                // учебный обмен: головы двух колонок с разными цветами
+                var done = false
+                for (ci in cols.indices) for (cj in ci + 1 until cols.size) {
+                    if (done) break
+                    val a = cols[ci][0]; val b = cols[cj][0]
+                    if (a.c != b.c && a.pid == 0 && b.pid == 0) { swap(ci, 0, cj, 0, 1); done = true }
+                }
+                if (done) continue
+            }
+            // случайная пара: разные цвета, оба лотка ещё не двухцветные
+            for (attempt in 0 until 60) {
+                val ci = r.nextInt(cols.size); val cj = r.nextInt(cols.size)
+                if (cols[ci].isEmpty() || cols[cj].isEmpty()) continue
+                val ti = r.nextInt(min(6, cols[ci].size)); val tj = r.nextInt(min(6, cols[cj].size))
+                if (ci == cj && ti == tj) continue
+                if (key(ci, ti) in used || key(cj, tj) in used) continue
+                val a = cols[ci][ti]; val b = cols[cj][tj]
+                if (a.c == b.c || a.n < 3 || b.n < 3) continue
+                val m = if (a.n >= 4 && b.n >= 4 && r.next() < 0.45) 2 else 1
+                swap(ci, ti, cj, tj, m)
+                break
+            }
+        }
+    }
+
+    /**
+     * Цепи: у нескольких лотков (не из связанных пар) висит замок «открывается, когда собрано N коробок».
+     * Цепи ложатся в разные колонки и в начало (три первых места), потому что именно там они мешают.
+     * Лоток первой цепи на учебном уровне всегда стоит впереди и снимается после первой коробки.
+     */
+    private fun chainSome(cols: List<MutableList<TrayDef>>, spec: Spec, lesson: Boolean, r: Rng) {
+        val order = cols.indices.toMutableList(); shuffle(order, r)
+        // на учебном уровне первой цепью занимается колонка, у которой голова не из связанной пары
+        if (lesson) { val j = order.indexOfFirst { cols[it].isNotEmpty() && cols[it][0].pid == 0 }; if (j > 0) { val t = order[0]; order[0] = order[j]; order[j] = t } }
+        for (k in 0 until spec.chains) {
+            val ci = order[k % order.size]
+            val col = cols[ci]
+            if (col.isEmpty()) continue
+            val ti = if (k == 0 && lesson) 0 else r.nextInt(min(3, col.size))
+            val t = col[ti]
+            if (t.pid != 0 || t.lock != 0) continue
+            val lock = if (k == 0 && lesson) 1 else 1 + r.nextInt(spec.maxLock)
+            col[ti] = TrayDef(t.c, t.n, t.arrow, t.pid, t.hidden, lock, t.c2, t.n2)
+        }
+    }
+
+    /** Скрытые коробки: цвет части ждущих в очереди коробок показывается «?», пока они не выйдут на место. */
+    private fun mysteryBoxes(count: Int, spec: Spec, lesson: Boolean, r: Rng): Set<Int> {
+        if (spec.mysteryShare <= 0.0 || count <= SLOTS) return emptySet()
+        val out = HashSet<Int>()
+        for (i in SLOTS until count) if (r.next() < spec.mysteryShare) out.add(i)
+        // на каждом уровне хотя бы две скрытые коробки (а на учебном — обе в первых двух стопках, сразу за активными)
+        if (lesson) { out.add(SLOTS); out.add(SLOTS + 1) }
+        while (out.size < 2) out.add(SLOTS + r.nextInt(count - SLOTS))
+        return out
+    }
+
+    /**
      * Раскладка уровня `id`. `attempt` — номер варианта (генерируются разные, подходящий выбран проверкой),
      * `belt` — вместимость ленты.
      */
@@ -234,17 +340,71 @@ object Levels {
         placePairs(cols, s, r)
         hideSome(cols, s, r)
 
+        // Новые усложнения берут числа из отдельного генератора: поток `r` выше не трогаем, поэтому
+        // уровни до их появления остаются точно такими же, как были.
+        val fx = Rng(id * 7368787 + attempt * 2038074 + 1013)
+        if (s.swaps > 0) mixTrays(cols, s, id == Lessons.all[LS_MIXED].level, fx)
+        if (s.chains > 0) chainSome(cols, s, id == Lessons.all[LS_CHAIN].level, fx)
+        val mystery = mysteryBoxes(boxes.size, s, id == Lessons.all[LS_MYSTERY].level, fx)
+
         // свой набор цветов палитры на каждый уровень: цвета перемешаны, структура задачи не меняется
         val palette = (0 until COLOR_COUNT).toMutableList(); shuffle(palette, r)
-        fun tint(t: TrayDef) = TrayDef(palette[t.c], t.n, t.arrow, t.pid, t.hidden)
+        fun tint(t: TrayDef) = TrayDef(palette[t.c], t.n, t.arrow, t.pid, t.hidden, t.lock, if (t.c2 >= 0) palette[t.c2] else -1, t.n2)
         val elevator = if (s.lift) r.nextInt(SLOTS) else -1
-        return Level(id, cols.map { col -> col.map(::tint) }, boxes.map { palette[it] }, belt, elevator)
+        return Level(id, cols.map { col -> col.map(::tint) }, boxes.map { palette[it] }, belt, elevator, mystery)
     }
 
     /** Номер варианта раскладки, выбранный проверкой (по умолчанию 0). */
     private val ATTEMPT = mapOf<Int, Int>(
         // ATTEMPT-BEGIN
         27 to 1,
+        88 to 1,
+        103 to 1,
+        109 to 1,
+        110 to 1,
+        114 to 1,
+        115 to 1,
+        121 to 1,
+        123 to 2,
+        125 to 2,
+        126 to 4,
+        132 to 1,
+        137 to 1,
+        140 to 2,
+        141 to 1,
+        142 to 7,
+        143 to 2,
+        145 to 1,
+        149 to 1,
+        152 to 1,
+        157 to 2,
+        158 to 1,
+        159 to 3,
+        160 to 2,
+        161 to 2,
+        164 to 3,
+        165 to 1,
+        167 to 2,
+        170 to 2,
+        172 to 1,
+        173 to 4,
+        175 to 1,
+        177 to 1,
+        181 to 1,
+        185 to 2,
+        186 to 2,
+        187 to 1,
+        188 to 1,
+        189 to 7,
+        190 to 1,
+        191 to 3,
+        192 to 7,
+        193 to 4,
+        194 to 4,
+        196 to 3,
+        197 to 6,
+        198 to 19,
+        200 to 7,
         // ATTEMPT-END
     )
 
@@ -261,6 +421,21 @@ object Levels {
         16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
         15, 15, 15, 14, 14, 14, 14, 14, 14, 14,
         14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
+        14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
+        14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
+        14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
+        14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
+        14, 14, 14, 14, 14, 15, 14, 14, 14, 14,
+        15, 14, 14, 14, 14, 14, 16, 14, 14, 14,
+        14, 17, 14, 14, 14, 15, 14, 14, 14, 14,
+        14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
+        14, 15, 14, 22, 14, 18, 14, 14, 14, 14,
+        14, 14, 18, 14, 14, 18, 16, 14, 14, 14,
+        18, 24, 14, 14, 14, 15, 22, 21, 14, 14,
+        16, 19, 14, 14, 19, 15, 15, 18, 14, 21,
+        21, 29, 23, 22, 23, 18, 22, 17, 15, 14,
+        17, 14, 17, 15, 27, 17, 15, 14, 16, 20,
+        16, 14, 17, 19, 17, 15, 25, 14, 17, 17,
         // BELTS-END
     )
 

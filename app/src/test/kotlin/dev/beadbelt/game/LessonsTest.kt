@@ -23,8 +23,8 @@ class LessonsTest {
     }
 
     @Test
-    fun lessonTableIsOrderedAndFitsIntoTheFirstFiftyLevels() {
-        assertEquals(8, Lessons.all.size)
+    fun lessonTableIsOrderedAndFitsIntoTheGame() {
+        assertEquals(11, Lessons.all.size)
         Lessons.all.forEachIndexed { i, l -> assertEquals("номер урока $i", i, l.id) }
         assertTrue("уровни уроков растут", Lessons.all.zipWithNext().all { (a, b) -> a.level < b.level })
         assertTrue("все уроки в пределах игры", Lessons.all.all { it.level in 1..LEVEL_COUNT })
@@ -60,10 +60,18 @@ class LessonsTest {
             if (id == lift) assertTrue("на уровне урока должен быть лифт", l.elevator >= 0)
             if (id < hid) assertTrue("уровень $id: скрытый цвет раньше урока", !hasHidden)
             if (id == hid) assertTrue("на уровне урока должен быть скрытый цвет", hasHidden)
+            val flat = l.columns.flatten()
+            if (id < Lessons.all[LS_MIXED].level) assertTrue("уровень $id: двухцветный лоток раньше урока", flat.none { it.mixed })
+            if (id == Lessons.all[LS_MIXED].level) assertTrue("на уроке есть двухцветный лоток впереди", l.columns.any { it[0].mixed })
+            if (id < Lessons.all[LS_CHAIN].level) assertTrue("уровень $id: цепь раньше урока", flat.none { it.lock > 0 })
+            if (id == Lessons.all[LS_CHAIN].level) assertTrue("на уроке есть цепь впереди", l.columns.any { it[0].lock > 0 })
+            if (id < Lessons.all[LS_MYSTERY].level) assertTrue("уровень $id: скрытая коробка раньше урока", l.mystery.isEmpty())
+            if (id == Lessons.all[LS_MYSTERY].level) assertTrue("на уроке есть скрытые коробки", l.mystery.size >= 2)
         }
         // сначала помощники, потом новые правила поля
         val aidsEnd = Lessons.all.filter { it.aid >= 0 }.maxOf { it.level }
         assertTrue(aidsEnd < hid && hid < links && links < lift)
+        assertTrue(lift < Lessons.all[LS_MIXED].level && Lessons.all[LS_MIXED].level < Lessons.all[LS_CHAIN].level && Lessons.all[LS_CHAIN].level < Lessons.all[LS_MYSTERY].level)
     }
 
     @Test

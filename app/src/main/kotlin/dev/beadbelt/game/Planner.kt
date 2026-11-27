@@ -15,7 +15,9 @@ import kotlin.math.min
  *
  * Порядок коробок: лента на нижней прямой идёт справа налево, так что шарик сначала проезжает коробку 3, затем 2, 1, 0.
  */
-class Board(val cols: List<List<TrayDef>>, val stacks: List<IntArray>, val elevator: Int, val cap: Int) {
+class Board(val cols: List<List<TrayDef>>, val stacks: List<IntArray>, val elevator: Int, val cap: Int,
+            /** Сколько коробок собрано в живой партии до этой модели: цепи на лотках считают от общего числа. */
+            val doneBase: Int = 0) {
     val totalBoxes = stacks.sumOf { it.size }
 
     init {
@@ -74,9 +76,13 @@ object Planner {
         }
     }
 
-    /** Тап по колонке `col`: лотки, которые он запускает (сам лоток + соседи по стрелкам), и новые головы колонок. */
-    fun launch(b: Board, heads: IntArray, col: Int): List<TrayDef>? {
+    /**
+     * Тап по колонке `col`: лотки, которые он запускает (сам лоток + соседи по стрелкам), и новые головы колонок.
+     * `done` — сколько коробок собрано всего: лоток в цепи с `lock` > `done` не высыпается (null).
+     */
+    fun launch(b: Board, heads: IntArray, col: Int, done: Int = Int.MAX_VALUE): List<TrayDef>? {
         if (heads[col] >= b.cols[col].size) return null
+        if (b.cols[col][heads[col]].lock > done) return null
         val first = b.cols[col][heads[col]]; heads[col]++
         val batch = arrayListOf(first)
         val to = Links.follower(first.arrow, first.pid, col, b.cols.size) { c -> b.cols[c].getOrNull(heads[c])?.pid ?: 0 }
@@ -87,13 +93,13 @@ object Planner {
     /** Результат тапа по `col` или null, если ход невозможен или шарикам не хватает места на ленте. */
     fun tap(b: Board, s: PState, col: Int): PState? {
         val heads = s.heads.clone()
-        val batch = launch(b, heads, col) ?: return null
+        val batch = launch(b, heads, col, b.doneBase + s.done) ?: return null
         val main = s.copy()
         System.arraycopy(heads, 0, main.heads, 0, heads.size)
         // шарики приходят по одному, в порядке лотков; подходящая коробка забирает их сразу
-        for (t in batch) repeat(t.n) {
+        for (t in batch) for (k in 0 until t.n) {
             if (main.total >= b.cap) { settle(b, main); if (main.total >= b.cap) return null }
-            main.belt[t.c]++; main.total++
+            main.belt[t.ballColor(k)]++; main.total++
             settle(b, main)
         }
         return main

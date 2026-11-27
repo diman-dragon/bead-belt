@@ -11,7 +11,7 @@ class LevelsTest {
     fun allLevelsAreConsistent() {
         for (l in all) {
             val trayCount = IntArray(COLOR_COUNT)
-            l.columns.flatten().forEach { trayCount[it.c] += it.n }
+            l.columns.flatten().forEach { t -> for (k in 0 until t.n) trayCount[t.ballColor(k)]++ }
             val boxCount = IntArray(COLOR_COUNT)
             l.boxes.forEach { boxCount[it]++ }
             for (c in 0 until COLOR_COUNT) assertEquals("уровень ${l.id} цвет $c", boxCount[c] * BOX, trayCount[c])
@@ -146,7 +146,7 @@ class LevelsTest {
             repeat(40) {
                 val col = r.nextInt(l.columns.size)
                 val before = g.spawnQ.size
-                val batch = Planner.launch(board, heads, col)
+                val batch = Planner.launch(board, heads, col, g.done)
                 val ok = g.tapColumn(col)
                 assertEquals("уровень ${l.id}: ход возможен", batch != null, ok)
                 if (batch != null) assertEquals("уровень ${l.id}: шариков", batch.sumOf { it.n }, g.spawnQ.size - before)
@@ -162,30 +162,47 @@ class LevelsTest {
     }
 
     /**
-     * Кривая сложности рассчитана на 500 уровней, поэтому в первых 50 она растёт очень плавно:
-     * ничего не уменьшается, ступеньки по одному параметру за раз, лифт и связи только после своих уроков.
+     * Кривая сложности растёт до 200-го уровня: ничего не уменьшается, ступеньки по одному параметру за раз,
+     * лифт, связи и новые усложнения только после своих уроков.
      */
     @Test
     fun difficultyCurveIsGentleAndMonotonic() {
-        assertEquals(50, LEVEL_COUNT)
+        assertEquals(200, LEVEL_COUNT)
         var prev = Levels.spec(1)
-        for (id in 2..500) {
+        for (id in 2..LEVEL_COUNT) {
             val s = Levels.spec(id)
             assertTrue("уровень $id: цветов меньше", s.colors >= prev.colors)
             assertTrue("уровень $id: коробок на цвет меньше", s.perColor >= prev.perColor)
             assertTrue("уровень $id: пар меньше", s.pairs >= prev.pairs)
             assertTrue("уровень $id: скрытых меньше", s.hiddenShare >= prev.hiddenShare)
+            assertTrue("уровень $id: обменов меньше", s.swaps >= prev.swaps)
+            assertTrue("уровень $id: цепей меньше", s.chains >= prev.chains && s.maxLock >= prev.maxLock)
+            assertTrue("уровень $id: скрытых коробок меньше", s.mysteryShare >= prev.mysteryShare)
             val jumps = (if (s.colors != prev.colors) 1 else 0) + (if (s.perColor != prev.perColor) 1 else 0) + (if (s.pairs != prev.pairs) 1 else 0)
             assertTrue("уровень $id: несколько ступенек сразу", jumps <= 1)
             prev = s
         }
-        assertEquals(COLOR_COUNT, Levels.spec(500).colors)
-        assertEquals(6, Levels.spec(500).perColor)
-        assertEquals(4, Levels.spec(500).pairs)
+        assertEquals(COLOR_COUNT, Levels.spec(LEVEL_COUNT).colors)
+        assertEquals(5, Levels.spec(LEVEL_COUNT).perColor)
+        assertEquals(4, Levels.spec(LEVEL_COUNT).pairs)
+        assertTrue("к 200-му все усложнения в деле", Levels.spec(LEVEL_COUNT).let { it.swaps >= 4 && it.chains >= 3 && it.mysteryShare >= 0.5 })
         assertTrue("к 50-му уровню ещё далеко до максимума", Levels.spec(50).colors <= 5 && Levels.spec(50).perColor <= 3 && Levels.spec(50).pairs <= 1)
         assertTrue(all.filter { it.id < Lessons.all[LS_LIFT].level }.all { it.elevator < 0 })
         assertTrue(all.filter { it.id == Lessons.all[LS_LIFT].level }.all { it.elevator >= 0 })
         assertTrue("цвета на разных уровнях различаются", all.map { it.boxes.toSet() }.toSet().size > 5)
+    }
+
+    /** Первые 50 уровней остались такими же, как в прошлой версии (раскладка, цвета, лифты и ленты): прогресс и баланс сохранены. */
+    @Test
+    fun firstFiftyLevelsAreUnchanged() {
+        val sb = StringBuilder()
+        for (id in 1..50) {
+            val l = Levels.make(id)
+            sb.append(id).append(' ')
+            sb.append(l.columns.joinToString("|") { c -> c.joinToString(",") { "${it.c}.${it.n}.${it.arrow}.${it.pid}.${it.hidden}" } })
+            sb.append('#').append(l.boxes.joinToString()).append('#').append(l.elevator).append('#').append(l.belt).append('\n')
+        }
+        assertEquals(30132832, sb.toString().hashCode())
     }
 
     @Test

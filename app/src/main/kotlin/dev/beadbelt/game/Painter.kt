@@ -307,16 +307,22 @@ class Painter(val a: Assets, val sw: Float, val sh: Float) {
         path.reset(); path.moveTo(10f, 3f); path.quadTo(10f, 6f, 13f, 6f); path.quadTo(10f, 6f, 10f, 9f); path.quadTo(10f, 6f, 7f, 6f); path.quadTo(10f, 6f, 10f, 3f); cv.drawPath(path, p)
     }
 
-    /** Лампочка (подсказка), центр в (0,0). */
-    private fun vecBulb(cv: Canvas) {
-        p.style = Paint.Style.FILL; p.shader = null
-        p.color = 0xFFFFD84A.toInt(); cv.drawCircle(0f, -4f, 9f, p)
-        path.reset(); path.moveTo(-5.5f, 3f); path.lineTo(5.5f, 3f); path.lineTo(4f, 9f); path.lineTo(-4f, 9f); path.close(); cv.drawPath(path, p)
-        p.color = 0xFFB8BFD6.toInt(); rect.set(-4.5f, 9f, 4.5f, 11.8f); cv.drawRoundRect(rect, 1.2f, 1.2f, p)
-        rect.set(-3f, 11.8f, 3f, 14.5f); cv.drawRoundRect(rect, 1.2f, 1.2f, p)
-        p.color = Theme.alpha(Theme.WHITE, 170); cv.drawCircle(-3.4f, -7.2f, 2.6f, p)
-        p.style = Paint.Style.STROKE; p.strokeWidth = 1.6f; p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND; p.color = 0xFFC48A00.toInt()
-        path.reset(); path.moveTo(-3f, 3f); path.lineTo(-1.5f, -2.5f); path.lineTo(0f, 0.5f); path.lineTo(1.5f, -2.5f); path.lineTo(3f, 3f); cv.drawPath(path, p)
+    /** Подсказка: палец нажимает, от кончика расходятся волны («нажми сюда»). Центр в (0,0). */
+    private fun vecHint(cv: Canvas) {
+        p.shader = null; p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND
+        p.style = Paint.Style.STROKE; p.strokeWidth = 2.2f; p.color = 0xFFFFD84A.toInt()          // волны от кончика
+        rect.set(-4.5f, -13.5f, 4.5f, -4.5f); cv.drawArc(rect, 215f, 110f, false, p)
+        rect.set(-9f, -18f, 9f, 0f); cv.drawArc(rect, 220f, 100f, false, p)
+        val skin = 0xFFFFE2BC.toInt(); val line = 0xFF9A6A2E.toInt()
+        for (pass in 0..1) {                                                                     // сначала обводка, потом заливка
+            p.style = if (pass == 0) Paint.Style.FILL_AND_STROKE else Paint.Style.FILL
+            p.strokeWidth = if (pass == 0) 3.2f else 0f; p.color = if (pass == 0) line else skin
+            rect.set(-3f, -7f, 3f, 5f); cv.drawRoundRect(rect, 3f, 3f, p)                      // указательный палец
+            rect.set(-9f, 1f, 9f, 15f); cv.drawRoundRect(rect, 5.5f, 5.5f, p)                  // ладонь
+            rect.set(-12.5f, 4f, -6f, 11f); cv.drawRoundRect(rect, 3.2f, 3.2f, p)              // большой палец
+        }
+        p.style = Paint.Style.STROKE; p.strokeWidth = 1.2f; p.color = line                       // пальцы, прижатые к ладони
+        cv.drawLine(-3f, 6.5f, -3f, 11f, p); cv.drawLine(3f, 6.5f, 3f, 11f, p)
         p.strokeCap = Paint.Cap.BUTT
     }
 
@@ -402,7 +408,7 @@ class Painter(val a: Assets, val sw: Float, val sh: Float) {
     private val icUndo = bake(15f, 15f) { vecUndo(it) }
     private val icShuffle = bake(16f, 14f) { vecShuffle(it) }
     private val icClear = bake(15f, 16f) { vecClear(it) }
-    private val icBulb = bake(14f, 18f) { vecBulb(it) }
+    private val icHint = bake(15f, 18f) { vecHint(it) }
     private val icGift = bake(16f, 17f) { vecGift(it) }
     private val icLock = bake(16f, 24f) { vecLock(it, 0f, 0f, 1f) }
     private val icCheck = bake(12f, 10f) { vecCheck(it, 0f, 0f, 1f, Theme.WHITE) }
@@ -441,7 +447,7 @@ class Painter(val a: Assets, val sw: Float, val sh: Float) {
     fun undo(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icUndo, x, y, sc)
     fun shuffle(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icShuffle, x, y, sc)
     fun clear(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icClear, x, y, sc)
-    fun bulb(cv: Canvas, x: Float, y: Float, sc: Float = 1f, alpha: Int = 255) = put(cv, icBulb, x, y, sc, alpha)
+    fun hint(cv: Canvas, x: Float, y: Float, sc: Float = 1f, alpha: Int = 255) = put(cv, icHint, x, y, sc, alpha)
     fun gift(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icGift, x, y, sc)
     fun lock(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icLock, x, y, sc)
     fun check(cv: Canvas, x: Float, y: Float, sc: Float, color: Int) = put(cv, icCheck, x, y, sc, color ushr 24)

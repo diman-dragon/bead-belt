@@ -104,6 +104,8 @@ class Assets(scale: Float) {
     val boxNext: Array<Bitmap> = Array(COLOR_COUNT) { bakeCrate(it, BOX_W, BOX_H, box = true, dimA = 30) }
     /** Лоток со скрытым цветом: нейтральный, без значка цвета (вопросительный знак рисует отрисовщик). */
     val trayHidden: Bitmap = bakeCrate(COLOR_COUNT, TRAY_W, TRAY_H, box = false, dimA = 0)
+    /** Ждущая в очереди коробка со скрытым цветом: нейтральная, как скрытый лоток. */
+    val boxHidden: Bitmap = bakeCrate(COLOR_COUNT, BOX_W, BOX_H, box = true, dimA = 30)
 
     /** Значок-фигурка цвета: на коробках и лотках цвет читается ещё и по форме (помогает, когда оттенки похожи). */
     private fun glyph(cv: Canvas, c: Int, x: Float, y: Float, r: Float, q: Paint) {

@@ -24,6 +24,7 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
     private val boardPaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val occText = NumText()
     private val coinText = NumText()
+    private val chainText = NumText()
     private val aidCount = Array(AID_COUNT) { NumText() }
     private val aidPrice = Array(AID_COUNT) { NumText() }
     private var titleId = -1
@@ -60,7 +61,8 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         val x0 = 180f - (22f + tw) / 2f
         g.coin(cv, x0 + 8f, Layout.PLAY_COIN_Y - 5f, 9f)
         g.text(cv, cs, x0 + 22f, Layout.PLAY_COIN_Y, 17f, Theme.GOLD, align = Paint.Align.LEFT)
-        g.roundButton(cv, Layout.HUD_L_X, Layout.PLAY_Y, Layout.PLAY_R, ui.pr(BTN_SOUND)); g.speaker(cv, Layout.HUD_L_X, Layout.PLAY_Y, progress.sound)
+        g.roundButton(cv, Layout.PLAY_BACK_X, Layout.PLAY_Y, Layout.PLAY_R, ui.pr(BTN_BACK)); g.back(cv, Layout.PLAY_BACK_X, Layout.PLAY_Y)
+        g.roundButton(cv, Layout.PLAY_SOUND_X, Layout.PLAY_Y, Layout.PLAY_R, ui.pr(BTN_SOUND)); g.speaker(cv, Layout.PLAY_SOUND_X, Layout.PLAY_Y, progress.sound)
         g.roundButton(cv, Layout.HUD_R_X, Layout.PLAY_Y, Layout.PLAY_R, ui.pr(BTN_RESTART)); g.restart(cv, Layout.HUD_R_X, Layout.PLAY_Y)
     }
 
@@ -101,16 +103,42 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
 
     // ---------- лотки ----------
 
-    private fun drawTray(cv: Canvas, x: Float, y: Float, sc: Float, t: Tray, alpha: Int, concealed: Boolean = false) {
+    /** `chain` — сколько коробок ещё надо собрать, чтобы снять цепь (0 — цепи нет или она уже спала). */
+    private fun drawTray(cv: Canvas, x: Float, y: Float, sc: Float, t: Tray, alpha: Int, concealed: Boolean = false, chain: Int = 0) {
         val w = Assets.TRAY_W * sc; val h = Assets.TRAY_H * sc
         if (concealed) {            // цвет скрыт: нейтральный лоток, шарики не видны
             g.crate(cv, a.trayHidden, x, y, Assets.TRAY_W, Assets.TRAY_H, sc, alpha)
             g.text(cv, "?", x, y + 4f * sc, 34f * sc, Theme.alpha(Theme.WHITE, alpha), shadow = false)
-            return
+        } else {
+            g.crate(cv, a.tray[t.c], x, y, Assets.TRAY_W, Assets.TRAY_H, sc, alpha)
+            val r = 8.5f * sc
+            for (k in 0 until t.n) g.marble(cv, x + ((k % 3) - 1) * 20f * sc, y - h / 2 + 12f + 12f * sc + (k / 3) * 20f * sc, r, t.ballColor(k), alpha)
+            if (t.mixed) {           // двухцветный: тонкая светлая черта между цветами
+                val rows = (t.n - t.n2) / 3
+                if ((t.n - t.n2) % 3 == 0 && rows in 1..1) {
+                    g.p.style = Paint.Style.FILL; g.p.shader = null; g.p.color = Theme.alpha(Theme.WHITE, alpha * 3 / 4)
+                    val ly = y - h / 2 + 12f + 12f * sc + 10f * sc
+                    cv.drawRect(x - 31f * sc, ly - 1f, x + 31f * sc, ly + 1f, g.p)
+                }
+            }
         }
-        g.crate(cv, a.tray[t.c], x, y, Assets.TRAY_W, Assets.TRAY_H, sc, alpha)
-        val r = 8.5f * sc
-        for (k in 0 until t.n) g.marble(cv, x + ((k % 3) - 1) * 20f * sc, y - h / 2 + 12f + 12f * sc + (k / 3) * 20f * sc, r, t.c, alpha)
+        if (chain > 0) chainOverlay(cv, x, y, sc, chain, alpha)
+    }
+
+    /** Цепь: тёмная вуаль, замок и число коробок, которые осталось собрать. */
+    private fun chainOverlay(cv: Canvas, x: Float, y: Float, sc: Float, need: Int, alpha: Int) {
+        val p = g.p
+        p.style = Paint.Style.FILL; p.shader = null; p.color = Theme.alpha(0xFF0A1535.toInt(), 130 * alpha / 255)
+        val hw = Assets.TRAY_W * sc / 2f - 2f; val hh = Assets.TRAY_H * sc / 2f
+        g.rect.set(x - hw, y - hh, x + hw, y + hh); cv.drawRoundRect(g.rect, 10f, 10f, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = 3.2f * sc; p.strokeCap = Paint.Cap.ROUND; p.color = Theme.alpha(0xFFC9D2E8.toInt(), alpha)
+        cv.drawLine(x - hw, y - hh * 0.55f, x + hw, y + hh * 0.55f, p)
+        cv.drawLine(x - hw, y + hh * 0.55f, x + hw, y - hh * 0.55f, p)
+        p.strokeCap = Paint.Cap.BUTT
+        g.lock(cv, x, y - 2f * sc, 0.8f * sc)
+        p.style = Paint.Style.FILL; p.color = Theme.INK; cv.drawCircle(x + hw - 4f, y - hh + 4f, 11.5f * sc, p)
+        p.color = Theme.GOLD; cv.drawCircle(x + hw - 4f, y - hh + 4f, 10f * sc, p)
+        g.text(cv, chainText.of(need), x + hw - 4f, y - hh + 4f + 4.5f * sc, 13f * sc, Theme.INK, shadow = false)
     }
 
     private fun trays(cv: Canvas, game: Game, ui: Ui) {
@@ -121,7 +149,9 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
                 val concealed = t.hidden && k > 0          // скрытый цвет открывается, когда лоток выйдет вперёд
                 val sc = 1f - 0.06f * d
                 val y = TRAY_Y - TRAY_STEP * d
-                drawTray(cv, game.colX[i], y, sc, t, 255, concealed)
+                val need = if (t.lock > game.done) t.lock - game.done else 0
+                val shake = if (k == 0 && game.rattle[i] > 0f) sin(ui.clock * 70f) * 5f * game.rattle[i] else 0f
+                drawTray(cv, game.colX[i] + shake, y, sc, t, 255, concealed, need)
                 if (k > 0) tab(cv, game.colX[i], y, sc, t, concealed)
             }
         }
@@ -195,6 +225,16 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         }
         p.style = Paint.Style.FILL; p.color = Theme.alpha(Theme.pointer, (200 * fade).toInt())
         cv.drawCircle(cx, cy, 6f + 1.5f * pulse, p)
+        // куда пойдут шарики: рамка вокруг открытых коробок тех же цветов (скрытый лоток цвета не выдаёт)
+        val t = game.cols[ci][0]
+        p.style = Paint.Style.STROKE; p.strokeWidth = 3f
+        p.color = Theme.alpha(Theme.pointer, ((90 + 100 * pulse) * fade).toInt())
+        for (b in game.boxes) {
+            if (b == null || b.locked) continue
+            if (b.c != t.c && b.c != t.c2) continue
+            g.rect.set(game.boxX[b.slot] - BOX_W / 2f - 4f, BOX_Y - BOX_H / 2f - 4f, game.boxX[b.slot] + BOX_W / 2f + 4f, BOX_Y + BOX_H / 2f + 4f)
+            cv.drawRoundRect(g.rect, 16f, 16f, p)
+        }
     }
 
     private inline fun eachLink(game: Game, f: (from: Int, to: Int, right: Boolean) -> Unit) {
@@ -232,7 +272,13 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
         for (i in 0 until SLOTS) {
             val x = game.boxX[i]
             val q = game.queues[i]
-            for (k in minOf(q.size, 1) downTo 1) g.crate(cv, a.boxNext[q[k - 1].c], x, BOX_Y + BOX_STEP * k, BOX_W, BOX_H, 1f - 0.05f * k, 255)
+            for (k in minOf(q.size, 1) downTo 1) {
+                val nb = q[k - 1]
+                if (nb.hidden) {
+                    g.crate(cv, a.boxHidden, x, BOX_Y + BOX_STEP * k, BOX_W, BOX_H, 1f - 0.05f * k, 255)
+                    g.text(cv, "?", x, BOX_Y + BOX_STEP * k + 8f, 22f, Theme.alpha(Theme.WHITE, 235), shadow = false)
+                } else g.crate(cv, a.boxNext[nb.c], x, BOX_Y + BOX_STEP * k, BOX_W, BOX_H, 1f - 0.05f * k, 255)
+            }
             val b = game.boxes[i] ?: continue
             drawBox(cv, x, BOX_Y + b.enter * 14f, 0.94f + 0.06f * (1f - b.enter), b, 255)
         }
@@ -355,7 +401,7 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
             AID_UNDO -> g.undo(cv, x, BOOST_Y)
             AID_SHUFFLE -> g.shuffle(cv, x, BOOST_Y)
             AID_CLEAR -> g.clear(cv, x, BOOST_Y)
-            else -> g.bulb(cv, x, BOOST_Y - 1f)
+            else -> g.hint(cv, x, BOOST_Y - 1f)
         }
         if (!usable) { g.p.style = Paint.Style.FILL; g.p.shader = null; g.p.color = Theme.alpha(0xFF0A1535.toInt(), 120); cv.drawCircle(x, BOOST_Y, Layout.BOOST_R, g.p) }
         val ring = (ui.focusAid == aid && game.state == State.PLAY) || (ui.nudgeAid == aid && ui.nudgeT > 0f)

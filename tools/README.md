@@ -12,24 +12,24 @@
 ## Инструменты
 
 - `tools/Tune.kt`: структурная проверка раскладки (`audit`: баланс шариков и коробок, пары связей, скрытые лотки, лифт)
-  и подбор ленты и варианта для диапазона уровней. Нижняя граница ленты: `15 - id / 17` (плавное усложнение).
-- `tools/Verify.kt`: добавляет запас для живого игрока (+2 для уровней 1–10, +1 для 11–30) и проверяет итоговую ленту заново.
+  и подбор ленты и варианта для диапазона уровней. Нижняя граница ленты: `15 - id / 17` для первых 50 уровней, дальше 12 или минимум модели.
+- `tools/Verify.kt`: добавляет запас для живого игрока (+2 для уровней 1–10, +1 для 11–30, +1 для 51–200) и проверяет итоговую ленту заново.
 
 Запуск (нужен только `kotlinc`, Android не нужен; исходники игры чисто-Kotlin):
 
 ```
 G=app/src/main/kotlin/dev/beadbelt/game
 kotlinc $G/{Game,Levels,Planner,Hints,HopperPhysics,Particles,Geometry,Lessons,Shop,Monetization}.kt tools/Tune.kt tools/Verify.kt -d out
-java -cp out:<kotlin-stdlib.jar> dev.beadbelt.game.TuneKt 1 50 tuned.txt      # строки «уровень попытка лента минимум»
+java -cp out:<kotlin-stdlib.jar> dev.beadbelt.game.TuneKt 51 200 tuned.txt      # строки «уровень попытка лента минимум»
 java -cp out:<kotlin-stdlib.jar> dev.beadbelt.game.VerifyKt tuned.txt final.txt # «уровень попытка лента OK|BAD»
 ```
 
-Значения из `final.txt` переносятся в `ATTEMPT` и `BELTS`. На 50 уровней всё занимает несколько минут.
+Значения из `final.txt` переносятся в `ATTEMPT` и `BELTS`. На 150 новых уровней (51–200) подбор занимает около десяти минут на одном ядре.
 
 ## Когда пересчитывать
 Если менял `Levels.layout` или `Levels.spec`, правила коробок или ленты в `Game.kt`, физику воронки или `Planner.kt`, прогони
 `PlannerTest.followingHintsWinsAlmostAlways` и `LevelsTest`. Упали — пересчитай таблицу. Чтобы добавить уровни, подними
-`LEVEL_COUNT`: кривая сложности `Levels.spec` уже рассчитана на 500, останется подобрать ленты для новых номеров.
+`LEVEL_COUNT`: `Levels.spec` задаёт кривую только до 200: для новых номеров надо расширить её и подобрать ленты.
 Учебные уровни получают ещё `Lessons.BELT_BONUS` сверху (`Levels.make`), `LessonsTest.trainingLevelsAreWinnable` это проверяет.
 
 ## Замечание про монотонность

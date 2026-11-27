@@ -183,7 +183,7 @@ class GameView(context: Context) : View(context) {
     private fun lessonTap(launched: Int) {
         val ls = lesson ?: return
         if (lessonOk) return
-        if (ls.id == LS_BASICS || (ls.id == LS_LINKS && launched >= 2)) lessonPassed()
+        if (ls.id == LS_BASICS || ls.id == LS_MIXED || ls.id == LS_MYSTERY || (ls.id == LS_LINKS && launched >= 2)) lessonPassed()
     }
 
     /** Пока урок не усвоен, указывает пальцем, что нажать (для помощников подсвечена сама кнопка). */
@@ -191,9 +191,15 @@ class GameView(context: Context) : View(context) {
         if (ls.id == LS_LIFT && g.elevatorIsOpen) lessonPassed()
         if (ls.id == LS_HIDDEN && g.cols.any { it.firstOrNull()?.hidden == true }) lessonPassed()      // скрытый лоток вышел вперёд
         if (ls.id == LS_LINKS && !lessonOk && linkLeader(g) < 0) lessonPassed()                       // связи уже нет: нажать нечего
+        if (ls.id == LS_CHAIN && g.cols.none { c -> c.any { it.lock > g.done } }) lessonPassed()    // все цепи спали
         if (ui.hintCol >= 0 || !Hints.calm(g)) return
         when (ls.id) {
             LS_BASICS -> if (idle > (if (lessonOk) 3.5f else 1.2f)) {
+                val a = Hints.advise(g, 5_000)
+                if (a.kind == Advice.TAP) point(a.col)
+                idle = 0f
+            }
+            LS_MIXED, LS_CHAIN, LS_MYSTERY -> if (!lessonOk && idle > 1.5f) {
                 val a = Hints.advise(g, 5_000)
                 if (a.kind == Advice.TAP) point(a.col)
                 idle = 0f
@@ -378,7 +384,8 @@ class GameView(context: Context) : View(context) {
                 for (aid in 0 until AID_COUNT) if (Layout.inCircle(x, y, Layout.aidX(aid), BOOST_Y, Layout.BOOST_R + 6f) && boosterOn(aid)) return aidButtonId(aid)
                 return when {
                     Layout.inCircle(x, y, Layout.HUD_R_X, Layout.PLAY_Y, Layout.PLAY_R + 8f) -> BTN_RESTART
-                    Layout.inCircle(x, y, Layout.HUD_L_X, Layout.PLAY_Y, Layout.PLAY_R + 8f) -> BTN_SOUND
+                    Layout.inCircle(x, y, Layout.PLAY_BACK_X, Layout.PLAY_Y, Layout.PLAY_R + 4f) -> BTN_BACK
+                    Layout.inCircle(x, y, Layout.PLAY_SOUND_X, Layout.PLAY_Y, Layout.PLAY_R + 4f) -> BTN_SOUND
                     Layout.inRect(Layout.PLAY_COIN, x, y) -> BTN_SHOP
                     else -> BTN_NONE
                 }
@@ -438,7 +445,7 @@ class GameView(context: Context) : View(context) {
         }
         val g = game
         when (id) {
-            BTN_PLAY -> startLevel(progress.unlocked)
+            BTN_PLAY -> if (progress.starsOf(LEVEL_COUNT) > 0) go(Screen.LEVELS) else startLevel(progress.unlocked)
             BTN_LEVELS -> go(Screen.LEVELS)
             BTN_SOUND -> { progress.sound = !progress.sound; sound.enabled = progress.sound }
             BTN_BACK, BTN_MENU -> if (screen == Screen.SHOP) closeShop() else go(Screen.MENU)
@@ -467,6 +474,7 @@ class GameView(context: Context) : View(context) {
                 ui.menuMsgAt = ui.clock
             }
             BTN_NEXT -> if (g != null && !busy) {
+                if (g.state == State.WON && current >= LEVEL_COUNT) { go(Screen.LEVELS); return }       // последний уровень пройден
                 val won = g.state == State.WON && current < LEVEL_COUNT
                 val next = if (won) current + 1 else current
                 if (won && ads.interstitialReady && AdPolicy.interstitialDue(current, winsSinceAd, lastAdMs, now(), progress.adsRemoved)) {
@@ -508,7 +516,7 @@ class GameView(context: Context) : View(context) {
                 point(a.col)
             }
             Advice.STUCK -> nudge(if (g.canClear && boosterOn(AID_CLEAR)) AID_CLEAR else AID_UNDO)
-            else -> {}      // шарики ещё едут: совет был бы неточным, ничего не списываем
+            else -> { ui.nudgeAid = AID_HINT; ui.nudgeT = 1.2f }      // шарики ещё едут: совет был бы неточным, ничего не списываем; кнопка коротко мигает кольцом
         }
     }
 
