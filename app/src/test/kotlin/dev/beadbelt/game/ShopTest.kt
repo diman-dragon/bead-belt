@@ -35,7 +35,7 @@ class ShopTest {
         assertTrue("рано: обучение", !AdPolicy.interstitialDue(AdPolicy.FROM_LEVEL - 1, 9, old, now, false))
         assertTrue("не каждую победу", !AdPolicy.interstitialDue(21, AdPolicy.EVERY_WINS - 1, old, now, false))
         assertTrue("не чаще интервала", !AdPolicy.interstitialDue(21, 9, now - 1000, now, false))
-        for (ls in Lessons.all.filter { it.level >= AdPolicy.FROM_LEVEL }) assertTrue("на учебном уровне ${ls.level}", !AdPolicy.interstitialDue(ls.level, 9, old, now, false))
+        for (ls in Lessons.all.filter { it.at >= AdPolicy.FROM_LEVEL }) assertTrue("на учебном уровне ${ls.at}", !AdPolicy.interstitialDue(ls.at, 9, old, now, false))
     }
 
     @Test

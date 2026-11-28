@@ -71,7 +71,7 @@ class AidsTest {
 
     @Test
     fun shuffleRedealsTheSameTraysAndDropsLinks() {
-        val lvl = Levels.make(Lessons.all[LS_LINKS].level + 3)
+        val lvl = Levels.make(Lessons.all[LS_LINKS].at + 3)
         val g = Game(lvl) { _, _ -> }
         fun multiset() = g.cols.flatten().map { "${it.c}.${it.n}.${it.hidden}" }.sorted()
         val before = multiset()
@@ -112,7 +112,7 @@ class AidsTest {
 
     @Test
     fun hiddenTrayIsRevealedOnlyAtTheFrontOfItsColumn() {
-        val at = Lessons.all[LS_HIDDEN].level
+        val at = Lessons.all[LS_HIDDEN].at
         val g = Game(Levels.make(at)) { _, _ -> }
         assertTrue("первые лотки видны", g.cols.all { !it[0].hidden })
         assertTrue(g.cols[0][1].hidden && g.cols[1][1].hidden)

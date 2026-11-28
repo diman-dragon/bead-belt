@@ -8,7 +8,7 @@ package dev.beadbelt.game
 object LessonText {
     fun title(ls: Lesson) = when (ls.id) {
         LS_BASICS -> tr("Как играть", "How to play")
-        LS_BULB -> tr("Подсказка", "The hint")
+        LS_BULB -> tr("Авторасклад", "Auto-play")
         LS_UNDO -> tr("Отменить ход", "Undo")
         LS_CLEAR -> tr("Очистить ленту", "Clear the belt")
         LS_SHUFFLE -> tr("Перемешать", "Shuffle")
@@ -25,8 +25,8 @@ object LessonText {
             "Нажми на лоток вверху: шарики высыплются в воронку и поедут по ленте. Шарик сам влетит в коробку своего цвета, когда проедет мимо. В коробке три места. Собери все коробки!",
             "Tap a tray at the top: its beads pour into the funnel and ride the belt. A bead jumps into the box of its color as it passes. A box holds three. Fill every box!")
         LS_BULB -> tr(
-            "Не знаешь, что нажать? Подсказка просчитает партию, покажет пальцем лоток, который ведёт к победе, и обведёт коробки, куда пойдут его шарики. Сейчас она бесплатная: нажми на неё внизу. За урок получишь три подсказки.",
-            "Not sure what to tap? The hint analyzes the position, points at the tray that leads to a win and outlines the boxes its beads will go to. It is free now: tap it below. Finish the level to get three hints.")
+            "Лень думать? Волшебная палочка сама, ход за ходом, высыплет половину оставшихся лотков в лучшем порядке. Это дорогой помощник, а на уроке он бесплатный: нажми на палочку внизу. Любое твоё нажатие остановит его. За чистое прохождение с ним три звезды не получить.",
+            "Don't feel like thinking? The magic wand pours half of the remaining trays for you, one move at a time, in the best order. It is expensive, but free in this lesson: tap the wand below. Any tap of yours stops it. A flawless three-star run is not possible with it.")
         LS_UNDO -> tr(
             "Ошибся? Стрелка назад вернёт всё как было перед последним ходом. Сначала нажми на любой лоток, потом на стрелку внизу. Сейчас бесплатно, за урок получишь три отмены.",
             "Made a mistake? The back arrow restores everything to just before your last move. Tap any tray first, then the arrow below. Free now; finish the level to get three undos.")
@@ -64,7 +64,7 @@ object LessonText {
         val p = ls.prize
         val parts = ArrayList<String>(5)
         if (p.coins > 0) parts.add(tr("+${p.coins} монет", "+${p.coins} coins"))
-        if (p.aids[AID_HINT] > 0) parts.add(tr("подсказка ×${p.aids[AID_HINT]}", "hint ×${p.aids[AID_HINT]}"))
+        if (p.aids[AID_HINT] > 0) parts.add(tr("авторасклад ×${p.aids[AID_HINT]}", "auto-play ×${p.aids[AID_HINT]}"))
         if (p.aids[AID_UNDO] > 0) parts.add(tr("отмена ×${p.aids[AID_UNDO]}", "undo ×${p.aids[AID_UNDO]}"))
         if (p.aids[AID_SHUFFLE] > 0) parts.add(tr("перемешать ×${p.aids[AID_SHUFFLE]}", "shuffle ×${p.aids[AID_SHUFFLE]}"))
         if (p.aids[AID_CLEAR] > 0) parts.add(tr("очистка ×${p.aids[AID_CLEAR]}", "clear ×${p.aids[AID_CLEAR]}"))

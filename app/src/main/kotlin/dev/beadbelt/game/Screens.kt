@@ -487,7 +487,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         val sub = when {
             !won -> tr("Нет подходящих коробок", "No matching boxes")
             last -> tr("Ты прошёл все $LEVEL_COUNT уровней · ★ ${progress.totalStars}/${LEVEL_COUNT * 3}", "You beat all $LEVEL_COUNT levels · ★ ${progress.totalStars}/${LEVEL_COUNT * 3}")
-            stars >= 3 -> tr("Чисто! Без подсказок", "Clean! No hints used")
+            stars >= 3 -> tr("Чисто! Без помощи", "Clean! No help used")
             else -> tr("Уровень ${game.level.id} пройден", "Level ${game.level.id} complete")
         }
         val hasPrize = won && prize.isNotEmpty()
@@ -580,7 +580,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
     private fun offerTitle(o: Offer) = when (o.sku) {
         SKU_STARTER -> tr("Стартовый набор", "Starter pack")
         SKU_NOADS -> tr("Без рекламы", "No ads")
-        SKU_HINTS -> tr("Подсказки ×${o.prize.aids[AID_HINT]}", "Hints ×${o.prize.aids[AID_HINT]}")
+        SKU_HINTS -> tr("Авторасклад ×${o.prize.aids[AID_HINT]}", "Auto-play ×${o.prize.aids[AID_HINT]}")
         SKU_UNDOS -> tr("Отмены хода ×${o.prize.aids[AID_UNDO]}", "Undos ×${o.prize.aids[AID_UNDO]}")
         SKU_SHUFFLES -> tr("Перемешать ×${o.prize.aids[AID_SHUFFLE]}", "Shuffles ×${o.prize.aids[AID_SHUFFLE]}")
         SKU_CLEARS -> tr("Очистка ленты ×${o.prize.aids[AID_CLEAR]}", "Belt clears ×${o.prize.aids[AID_CLEAR]}")
@@ -593,7 +593,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         SKU_COINS_S -> tr("Горсть монет", "A handful of coins")
         SKU_COINS_M -> tr("Выгоднее", "Better value")
         SKU_COINS_L -> tr("Самый выгодный", "Best value")
-        SKU_HINTS -> tr("Подсказка покажет ход", "The hint shows a move")
+        SKU_HINTS -> tr("Сам высыпает половину лотков", "Pours half of the trays for you")
         SKU_UNDOS -> tr("Вернуть ход назад", "Take a move back")
         SKU_SHUFFLES -> tr("Новая раздача лотков", "A fresh deal of trays")
         else -> tr("Метла для ленты", "A broom for the belt")
@@ -651,7 +651,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         "Лоток в цепи: откроется, когда соберёшь" to "столько коробок, сколько на значке.",
         "Серая коробка «?»: цвет откроется," to "когда она выйдет вперёд своей стопки.",
         "Лента забита, и ничего не подходит —" to "проигрыш. Думай, что и когда сыпать.",
-        "Внизу: подсказка, отмена хода, перемешать" to "лотки, очистить ленту. Открываются уроками.",
+        "Внизу: авторасклад (палочка), отмена, перемешать" to "лотки, очистить ленту. Открываются уроками.",
     )
     private val rulesEn = listOf(
         "Tap a tray: its beads pour" to "into the funnel and ride the belt.",
@@ -662,7 +662,7 @@ class Screens(private val g: Painter, private val progress: Progress, private va
         "Chained tray: opens once you collect" to "as many boxes as the badge says.",
         "Grey box with ?: its color shows" to "once it reaches the front of its stack.",
         "Belt full and nothing matches —" to "you lose. Plan what to pour and when.",
-        "Below: hint, undo, shuffle trays," to "clear the belt. Unlocked by lessons.",
+        "Below: auto-play (wand), undo, shuffle trays," to "clear the belt. Unlocked by lessons.",
     )
 
     fun help(cv: Canvas, ui: Ui) {

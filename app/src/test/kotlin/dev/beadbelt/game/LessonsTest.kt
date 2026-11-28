@@ -26,14 +26,14 @@ class LessonsTest {
     fun lessonTableIsOrderedAndFitsIntoTheGame() {
         assertEquals(11, Lessons.all.size)
         Lessons.all.forEachIndexed { i, l -> assertEquals("номер урока $i", i, l.id) }
-        assertTrue("уровни уроков растут", Lessons.all.zipWithNext().all { (a, b) -> a.level < b.level })
-        assertTrue("все уроки в пределах игры", Lessons.all.all { it.level in 1..LEVEL_COUNT })
-        assertEquals(1, Lessons.all.first().level)
+        assertTrue("уровни уроков растут", Lessons.all.zipWithNext().all { (a, b) -> a.at < b.at })
+        assertTrue("все уроки в пределах игры", Lessons.all.all { it.at in 1..LEVEL_COUNT })
+        assertEquals(1, Lessons.all.first().at)
         for (l in Lessons.all) {
             assertTrue("урок ${l.id}: приз пуст", l.prize.total > 0)
-            assertEquals(l, Lessons.atLevel(l.level))
+            assertEquals(l, Lessons.atLevel(l.at))
         }
-        assertEquals(null, Lessons.atLevel(2))
+        assertEquals(null, Lessons.atLevel(Levels.EARLY.size + 1))
     }
 
     @Test
@@ -49,7 +49,7 @@ class LessonsTest {
     /** Каждая механика появляется ровно на уровне своего урока и не раньше. */
     @Test
     fun mechanicsAppearExactlyAtTheirLessons() {
-        val links = Lessons.all[LS_LINKS].level; val lift = Lessons.all[LS_LIFT].level; val hid = Lessons.all[LS_HIDDEN].level
+        val links = Lessons.all[LS_LINKS].at; val lift = Lessons.all[LS_LIFT].at; val hid = Lessons.all[LS_HIDDEN].at
         for (id in 1..LEVEL_COUNT) {
             val l = Levels.make(id)
             val hasLink = l.columns.flatten().any { it.pid != 0 }
@@ -61,39 +61,39 @@ class LessonsTest {
             if (id < hid) assertTrue("уровень $id: скрытый цвет раньше урока", !hasHidden)
             if (id == hid) assertTrue("на уровне урока должен быть скрытый цвет", hasHidden)
             val flat = l.columns.flatten()
-            if (id < Lessons.all[LS_MIXED].level) assertTrue("уровень $id: двухцветный лоток раньше урока", flat.none { it.mixed })
-            if (id == Lessons.all[LS_MIXED].level) assertTrue("на уроке есть двухцветный лоток впереди", l.columns.any { it[0].mixed })
-            if (id < Lessons.all[LS_CHAIN].level) assertTrue("уровень $id: цепь раньше урока", flat.none { it.lock > 0 })
-            if (id == Lessons.all[LS_CHAIN].level) assertTrue("на уроке есть цепь впереди", l.columns.any { it[0].lock > 0 })
-            if (id < Lessons.all[LS_MYSTERY].level) assertTrue("уровень $id: скрытая коробка раньше урока", l.mystery.isEmpty())
-            if (id == Lessons.all[LS_MYSTERY].level) assertTrue("на уроке есть скрытые коробки", l.mystery.size >= 2)
+            if (id < Lessons.all[LS_MIXED].at) assertTrue("уровень $id: двухцветный лоток раньше урока", flat.none { it.mixed })
+            if (id == Lessons.all[LS_MIXED].at) assertTrue("на уроке есть двухцветный лоток впереди", l.columns.any { it[0].mixed })
+            if (id < Lessons.all[LS_CHAIN].at) assertTrue("уровень $id: цепь раньше урока", flat.none { it.lock > 0 })
+            if (id == Lessons.all[LS_CHAIN].at) assertTrue("на уроке есть цепь впереди", l.columns.any { it[0].lock > 0 })
+            if (id < Lessons.all[LS_MYSTERY].at) assertTrue("уровень $id: скрытая коробка раньше урока", l.mystery.isEmpty())
+            if (id == Lessons.all[LS_MYSTERY].at) assertTrue("на уроке есть скрытые коробки", l.mystery.size >= 2)
         }
         // сначала помощники, потом новые правила поля
-        val aidsEnd = Lessons.all.filter { it.aid >= 0 }.maxOf { it.level }
+        val aidsEnd = Lessons.all.filter { it.aid >= 0 }.maxOf { it.at }
         assertTrue(aidsEnd < hid && hid < links && links < lift)
-        assertTrue(lift < Lessons.all[LS_MIXED].level && Lessons.all[LS_MIXED].level < Lessons.all[LS_CHAIN].level && Lessons.all[LS_CHAIN].level < Lessons.all[LS_MYSTERY].level)
+        assertTrue(lift < Lessons.all[LS_MIXED].at && Lessons.all[LS_MIXED].at < Lessons.all[LS_CHAIN].at && Lessons.all[LS_CHAIN].at < Lessons.all[LS_MYSTERY].at)
     }
 
     @Test
     fun trainingLevelsHaveRoomierBelt() {
         for (l in Lessons.all) {
-            assertEquals("уровень ${l.level}", minOf(30, Levels.beltOf(l.level) + Lessons.BELT_BONUS), Levels.make(l.level).belt)
+            assertEquals("уровень ${l.at}", minOf(30, Levels.beltOf(l.at) + Lessons.BELT_BONUS), Levels.make(l.at).belt)
         }
-        assertEquals(Levels.beltOf(2), Levels.make(2).belt)
+        assertEquals(Levels.beltOf(9), Levels.make(9).belt)       // 9-й — без урока
     }
 
     /** Учебные уровни проходимы при подсказках: не реже 28 из 30. */
     @Test
     fun trainingLevelsAreWinnable() {
         for (l in Lessons.all) {
-            val wins = (1L..30L).count { playWithHints(Levels.make(l.level), it) }
-            assertTrue("учебный уровень ${l.level}: побед $wins из 30", wins >= 28)
+            val wins = (1L..30L).count { playWithHints(Levels.make(l.at), it) }
+            assertTrue("учебный уровень ${l.at}: побед $wins из 30", wins >= 28)
         }
     }
 
     @Test
     fun linkLessonLevelShowsAnActiveLinkFromTheStart() {
-        val l = Levels.make(Lessons.all[LS_LINKS].level)
+        val l = Levels.make(Lessons.all[LS_LINKS].at)
         val g = Game(l) { _, _ -> }
         val leaders = g.cols.indices.filter { i ->
             val h = g.cols[i][0]

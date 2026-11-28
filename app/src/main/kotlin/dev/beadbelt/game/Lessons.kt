@@ -1,7 +1,7 @@
 package dev.beadbelt.game
 
 // четыре помощника внизу экрана (порядок = порядок кнопок слева направо)
-const val AID_HINT = 0       // подсказка: показывает ход
+const val AID_HINT = 0       // авторасклад: сам высыпает половину оставшихся лотков (внутреннее имя осталось прежним)
 const val AID_UNDO = 1       // отменить последний ход
 const val AID_SHUFFLE = 2    // перемешать лотки
 const val AID_CLEAR = 3      // очистить ленту: шарики с ленты возвращаются в лотки
@@ -27,17 +27,17 @@ class Prize(val coins: Int = 0, hint: Int = 0, undo: Int = 0, shuffle: Int = 0, 
 }
 
 /**
- * Урок: новая механика появляется на уровне `level`. Перед уровнем — карточка с объяснением, сам уровень —
+ * Урок: новая механика появляется на уровне сложности `level` (первые десять уровней сжаты, их номера см. `Levels.EARLY`). Перед уровнем — карточка с объяснением, сам уровень —
  * тренировка (нужный элемент подсвечен, помощник на нём бесплатный), после победы игрок получает `prize`.
  * `aid` — помощник, который открывает урок (-1, если это не помощник).
  */
 class Lesson(val id: Int, val level: Int, val aid: Int, val prize: Prize)
 
 object Lessons {
-    /** Одиннадцать уроков: помощники и первые правила поля в первых 50 уровнях, новые усложнения (два цвета, цепь, скрытые коробки) на 56, 76 и 100-м. */
+    /** Одиннадцать уроков: восемь первых (помощники и правила поля) идут по одному на уровнях 1–8, новые усложнения (два цвета, цепь, скрытые коробки) на уровнях 16, 36 и 60. */
     val all = listOf(
         Lesson(LS_BASICS, 1, -1, Prize(coins = 30)),
-        Lesson(LS_BULB, 4, AID_HINT, Prize(hint = 3)),
+        Lesson(LS_BULB, 4, AID_HINT, Prize(hint = 1)),
         Lesson(LS_UNDO, 8, AID_UNDO, Prize(undo = 3)),
         Lesson(LS_CLEAR, 12, AID_CLEAR, Prize(clear = 2)),
         Lesson(LS_SHUFFLE, 16, AID_SHUFFLE, Prize(shuffle = 2)),
@@ -52,8 +52,11 @@ object Lessons {
     /** На учебных уровнях лента просторнее: игрок осваивает новое, а не борется за место. */
     const val BELT_BONUS = 3
 
-    /** Урок, который начинается на этом уровне. */
-    fun atLevel(level: Int): Lesson? = all.firstOrNull { it.level == level }
+    /** Урок, который начинается на уровне с номером `id` (`Lesson.level` — индекс сложности, см. `Levels.diff`). */
+    fun atLevel(id: Int): Lesson? = Levels.diff(id).let { d -> all.firstOrNull { it.level == d } }
+
+    /** Номер уровня, на котором начинается урок. */
+    fun idOf(lesson: Lesson): Int = Levels.idOf(lesson.level)
 
     /** Урок, открывающий помощника. */
     fun forAid(aid: Int): Lesson = all.first { it.aid == aid }

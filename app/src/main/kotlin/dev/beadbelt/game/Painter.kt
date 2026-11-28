@@ -311,12 +311,12 @@ class Painter(val a: Assets, val sw: Float, val sh: Float, am: AssetManager? = n
         path.reset(); path.moveTo(10f, 3f); path.quadTo(10f, 6f, 13f, 6f); path.quadTo(10f, 6f, 10f, 9f); path.quadTo(10f, 6f, 7f, 6f); path.quadTo(10f, 6f, 10f, 3f); cv.drawPath(path, p)
     }
 
-    /** Запасной значок подсказки на случай, если картинка не загрузилась: золотой круг с вопросом. Центр в (0,0). */
+    /** Запасной значок авторасклада на случай, если картинка не загрузилась: золотой круг со звездой. Центр в (0,0). */
     private fun vecHint(cv: Canvas) {
         p.shader = null; p.style = Paint.Style.FILL; p.color = 0xFFFFC21F.toInt(); cv.drawCircle(0f, 0f, 14f, p)
         p.color = Theme.alpha(Theme.WHITE, 90); cv.drawCircle(-3f, -5f, 7f, p)
         p.color = 0xFFE5334B.toInt(); p.textAlign = Paint.Align.CENTER; p.typeface = Theme.fontBlack; p.textSize = 22f
-        cv.drawText("?", 0f, 8f, p)
+        cv.drawText("★", 0f, 8f, p)
     }
 
     /** Подарочная коробка, центр в (0,0). */

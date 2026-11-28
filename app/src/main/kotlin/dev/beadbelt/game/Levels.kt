@@ -110,7 +110,23 @@ object Levels {
      *  двухцветные лотки (с урока «Два цвета»), цепи (с урока «Цепь»), скрытые коробки (с урока «Тайна»): число растёт к 200-му.
      * Связи односторонние: ведущий → ведомый. Первые 50 уровней совпадают с прежней версией до последнего шарика.
      */
-    fun spec(id: Int): Spec {
+    /**
+     * Первые десять уровней — спрессованные прежние 50: берутся уровни сложности 1, 4, 8, 12, 16, 20, 26, 34, 42 и 50,
+     * так что на каждом из первых восьми идёт свой урок (основы, подсказка, отмена, очистка, перемешивание, скрытые лотки,
+     * связи, лифт), а два последних — свободная игра. Дальше номер уровня = сложность − 40 (11-й = прежний 51-й).
+     */
+    val EARLY = intArrayOf(1, 4, 8, 12, 16, 20, 26, 34, 42, 50)
+
+    /** Индекс сложности уровня `id`: по нему считаются параметры, раскладка, уроки и ленты. */
+    fun diff(id: Int): Int = if (id <= EARLY.size) EARLY[(id - 1).coerceAtLeast(0)] else id + (50 - EARLY.size)
+
+    /** Номер уровня, у которого индекс сложности `d` (-1, если такого нет среди спрессованных первых). */
+    fun idOf(d: Int): Int = if (d > 50) d - (50 - EARLY.size) else EARLY.indexOf(d).let { if (it < 0) -1 else it + 1 }
+
+    fun spec(id: Int): Spec = specD(diff(id))
+
+    /** Кривая по индексу сложности `id` (в этой функции он зовётся id, как раньше). */
+    private fun specD(id: Int): Spec {
         val colors = when { id < 10 -> 3; id < 25 -> 4; id < 70 -> 5; id < 120 -> 6; id < 165 -> 7; else -> COLOR_COUNT }
         val perColor = when { id < 13 -> 2; id < 95 -> 3; id < 150 -> 4; else -> 5 }
         val linksAt = Lessons.all[LS_LINKS].level
@@ -122,15 +138,15 @@ object Levels {
         val share = when {
             id < hiddenAt -> 0.0
             id <= 50 -> 0.12 + 0.38 * (id - hiddenAt) / (500.0 - hiddenAt)
-            else -> { val at50 = 0.12 + 0.38 * (50 - hiddenAt) / (500.0 - hiddenAt); at50 + (0.45 - at50) * (id - 50) / 150.0 }
+            else -> { val at50 = 0.12 + 0.38 * (50 - hiddenAt) / (500.0 - hiddenAt); at50 + (0.45 - at50) * minOf(id - 50, 150) / 150.0 }
         }
         val mixedAt = Lessons.all[LS_MIXED].level
         val chainAt = Lessons.all[LS_CHAIN].level
         val mysteryAt = Lessons.all[LS_MYSTERY].level
-        val swaps = if (id < mixedAt) 0 else 1 + (id - mixedAt) / 30
-        val chains = if (id < chainAt) 0 else 1 + (id - chainAt) / 40
-        val maxLock = if (id < chainAt) 0 else 2 + (id - chainAt) / 30
-        val mystery = if (id < mysteryAt) 0.0 else 0.25 + 0.35 * (id - mysteryAt) / 100.0
+        val swaps = if (id < mixedAt) 0 else minOf(5, 1 + (id - mixedAt) / 30)
+        val chains = if (id < chainAt) 0 else minOf(4, 1 + (id - chainAt) / 40)
+        val maxLock = if (id < chainAt) 0 else minOf(6, 2 + (id - chainAt) / 30)
+        val mystery = if (id < mysteryAt) 0.0 else minOf(0.6, 0.25 + 0.35 * (id - mysteryAt) / 100.0)
         return Spec(colors, perColor, if (id <= 5) 3 else 4, pairs, id < linksAt + 20, id in linksAt until linksAt + 6, lift, sizeHi, share, id == hiddenAt,
             swaps, chains, maxLock, mystery)
     }
@@ -297,7 +313,17 @@ object Levels {
             if (col.isEmpty()) continue
             val ti = if (k == 0 && lesson) 0 else r.nextInt(min(3, col.size))
             val t = col[ti]
-            if (t.pid != 0 || t.lock != 0) continue
+            if (t.pid != 0 || t.lock != 0) {            // место занято парой или цепью: ищем другое случайное (первые попытки раскладки прежние)
+                for (tries in 0 until 40) {
+                    val cj = r.nextInt(cols.size); val cl = cols[cj]
+                    if (cl.isEmpty()) continue
+                    val tj = r.nextInt(min(3, cl.size)); val u = cl[tj]
+                    if (u.pid != 0 || u.lock != 0) continue
+                    cl[tj] = TrayDef(u.c, u.n, u.arrow, u.pid, u.hidden, 1 + r.nextInt(spec.maxLock), u.c2, u.n2)
+                    break
+                }
+                continue
+            }
             val lock = if (k == 0 && lesson) 1 else 1 + r.nextInt(spec.maxLock)
             col[ti] = TrayDef(t.c, t.n, t.arrow, t.pid, t.hidden, lock, t.c2, t.n2)
         }
@@ -319,8 +345,9 @@ object Levels {
      * `belt` — вместимость ленты.
      */
     fun layout(id: Int, attempt: Int, belt: Int = 30): Level {
-        val r = Rng(id * 15485863 + attempt * 32452843 + 2027)
-        val s = spec(id)
+        val d = diff(id)                            // всё в раскладке (параметры, зерно, уроки) считается по индексу сложности
+        val r = Rng(d * 15485863 + attempt * 32452843 + 2027)
+        val s = specD(d)
         val trays = ArrayList<TrayDef>()
         val boxes = ArrayList<Int>()
         for (c in 0 until s.colors) {
@@ -342,10 +369,10 @@ object Levels {
 
         // Новые усложнения берут числа из отдельного генератора: поток `r` выше не трогаем, поэтому
         // уровни до их появления остаются точно такими же, как были.
-        val fx = Rng(id * 7368787 + attempt * 2038074 + 1013)
-        if (s.swaps > 0) mixTrays(cols, s, id == Lessons.all[LS_MIXED].level, fx)
-        if (s.chains > 0) chainSome(cols, s, id == Lessons.all[LS_CHAIN].level, fx)
-        val mystery = mysteryBoxes(boxes.size, s, id == Lessons.all[LS_MYSTERY].level, fx)
+        val fx = Rng(d * 7368787 + attempt * 2038074 + 1013)
+        if (s.swaps > 0) mixTrays(cols, s, d == Lessons.all[LS_MIXED].level, fx)
+        if (s.chains > 0) chainSome(cols, s, d == Lessons.all[LS_CHAIN].level, fx)
+        val mystery = mysteryBoxes(boxes.size, s, d == Lessons.all[LS_MYSTERY].level, fx)
 
         // свой набор цветов палитры на каждый уровень: цвета перемешаны, структура задачи не меняется
         val palette = (0 until COLOR_COUNT).toMutableList(); shuffle(palette, r)
@@ -405,6 +432,40 @@ object Levels {
         197 to 6,
         198 to 19,
         200 to 7,
+        201 to 17,
+        202 to 5,
+        204 to 21,
+        205 to 27,
+        206 to 3,
+        207 to 2,
+        208 to 11,
+        209 to 10,
+        210 to 2,
+        212 to 1,
+        214 to 5,
+        215 to 3,
+        216 to 14,
+        217 to 2,
+        218 to 6,
+        219 to 6,
+        220 to 8,
+        221 to 5,
+        222 to 1,
+        223 to 12,
+        224 to 5,
+        225 to 10,
+        226 to 10,
+        228 to 3,
+        229 to 6,
+        230 to 20,
+        231 to 2,
+        232 to 20,
+        233 to 15,
+        234 to 4,
+        237 to 2,
+        238 to 18,
+        239 to 8,
+        240 to 8,
         // ATTEMPT-END
     )
 
@@ -423,8 +484,8 @@ object Levels {
         14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
         14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
         14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
-        14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
-        14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
+        13, 13, 13, 13, 13, 13, 13, 13, 13, 13,
+        13, 13, 13, 13, 13, 13, 13, 13, 13, 13,
         14, 14, 14, 14, 14, 15, 14, 14, 14, 14,
         15, 14, 14, 14, 14, 14, 16, 14, 14, 14,
         14, 17, 14, 14, 14, 15, 14, 14, 14, 14,
@@ -436,17 +497,22 @@ object Levels {
         21, 29, 23, 22, 23, 18, 22, 17, 15, 14,
         17, 14, 17, 15, 27, 17, 15, 14, 16, 20,
         16, 14, 17, 19, 17, 15, 25, 14, 17, 17,
+        14, 30, 15, 21, 15, 19, 14, 17, 24, 17,
+        28, 15, 19, 20, 15, 24, 20, 18, 14, 30,
+        21, 24, 25, 22, 21, 17, 28, 16, 20, 26,
+        17, 26, 16, 24, 16, 30, 28, 26, 20, 15,
         // BELTS-END
     )
 
     fun make(id: Int): Level {
         val i = id.coerceIn(1, LEVEL_COUNT)
-        return layout(i, ATTEMPT[i] ?: 0, min(30, BELTS[i - 1] + if (Lessons.atLevel(i) != null) Lessons.BELT_BONUS else 0))
+        val d = diff(i)                                      // таблицы ATTEMPT и BELTS ведутся по индексу сложности
+        return layout(i, ATTEMPT[d] ?: 0, min(30, BELTS[d - 1] + if (Lessons.atLevel(i) != null) Lessons.BELT_BONUS else 0))
     }
 
-    fun attemptOf(id: Int) = ATTEMPT[id] ?: 0
+    fun attemptOf(id: Int) = ATTEMPT[diff(id)] ?: 0
     /** Вместимость ленты по таблице (без бонуса учебного уровня). */
-    fun beltOf(id: Int) = BELTS[id - 1]
+    fun beltOf(id: Int) = BELTS[diff(id) - 1]
 }
 
 /** Кэш сгенерированных уровней: следующий уровень готовится в фоне, пока играешь текущий. */

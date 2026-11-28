@@ -29,12 +29,12 @@ class Offer(val sku: String, val prize: Prize, val oneTime: Boolean, val icon: I
  */
 object Shop {
     val offers = listOf(
-        Offer(SKU_STARTER, Prize(coins = 300, hint = 4, undo = 4, shuffle = 3, clear = 3), true, ICON_GIFT),
+        Offer(SKU_STARTER, Prize(coins = 300, hint = 2, undo = 4, shuffle = 3, clear = 3), true, ICON_GIFT),
         Offer(SKU_NOADS, Prize(), true, ICON_NOADS),
         Offer(SKU_COINS_S, Prize(coins = 300), false, ICON_COIN),
         Offer(SKU_COINS_M, Prize(coins = 900), false, ICON_COIN),
         Offer(SKU_COINS_L, Prize(coins = 2200), false, ICON_COIN),
-        Offer(SKU_HINTS, Prize(hint = 12), false, ICON_HINT),
+        Offer(SKU_HINTS, Prize(hint = 4), false, ICON_HINT),
         Offer(SKU_UNDOS, Prize(undo = 10), false, ICON_UNDO),
         Offer(SKU_SHUFFLES, Prize(shuffle = 8), false, ICON_SHUFFLE),
         Offer(SKU_CLEARS, Prize(clear = 8), false, ICON_CLEAR),

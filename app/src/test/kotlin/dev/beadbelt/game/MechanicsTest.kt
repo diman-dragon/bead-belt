@@ -66,3 +66,6 @@ class MechanicsTest {
         }
     }
 }
+
+/** Номер уровня, на котором начинается урок. */
+val Lesson.at: Int get() = Lessons.idOf(this)

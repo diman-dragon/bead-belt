@@ -15,7 +15,7 @@ import kotlin.math.min
 
 private const val BTN_BLOCK = -1     // нажатие поглощено (диалог, пауза), но действия нет
 private const val SPLASH_LEN = 3.1f     // сколько секунд длится заставка
-private const val VERSION_FALLBACK = "0.10.1"
+private const val VERSION_FALLBACK = "0.10.3"
 
 /**
  * Вид игры: цикл кадров, ввод и переходы между экранами.
@@ -42,7 +42,10 @@ class GameView(context: Context) : View(context) {
     private var paused = false
     private var fade = 0f
     private var stars = 0
-    private var hintsUsed = 0          // подсказки, взятые на этом уровне (влияют на звёзды)
+    private var hintsUsed = 0          // авторасклад и прочая помощь, взятая на этом уровне (влияет на звёзды)
+    private var autoLeft = 0           // сколько лотков авторасклад ещё должен высыпать (0 — он не работает)
+    private var autoCol = -1           // колонка, на которую авторасклад вот-вот нажмёт (пока показан палец)
+    private var autoT = 0f             // пауза до следующего действия авторасклада
     private var idle = 0f              // сколько секунд игрок ничего не нажимал
 
     // реклама и покупки: в отладочных сборках — тестовые заглушки, в релизе — то, что подключено в [Monetization]
@@ -145,6 +148,7 @@ class GameView(context: Context) : View(context) {
     /** Ведение игрока: указатель на лоток гаснет сам; на первых уровнях и на учебных уровнях подсказывает пальцем. Текстовых подсказок в игре нет. */
     private fun tutorialTick(g: Game, dt: Float) {
         if (ui.hintT > 0f) { ui.hintT -= dt; if (ui.hintT <= 0f) ui.hintCol = -1 }
+        if (autoLeft > 0) { autoTick(g, dt); return }
         idle += dt
         val ls = lesson
         if (ls != null) { lessonTick(g, ls); return }
@@ -265,7 +269,7 @@ class GameView(context: Context) : View(context) {
     // ---------- переходы ----------
 
     private fun go(next: Screen) {
-        screen = next; fade = 1f; ui.pressId = BTN_NONE; flingV = 0f; ui.hintCol = -1; infoOpen = false
+        screen = next; fade = 1f; ui.pressId = BTN_NONE; flingV = 0f; ui.hintCol = -1; infoOpen = false; autoStop()
         if (next == Screen.MENU) ui.menuAt = ui.clock
         if (next == Screen.LEVELS) {
             val row = (progress.unlocked - 1) / Layout.LV_COLS
@@ -286,7 +290,7 @@ class GameView(context: Context) : View(context) {
         current = target
         ui.endT = 0f; reward = 0; paused = false
         val lv = LevelCache.get(current)
-        infoOpen = false; hintsUsed = 0; idle = 0f; doubled = false
+        infoOpen = false; hintsUsed = 0; idle = 0f; doubled = false; autoStop()
         stars = 0; ui.hintCol = -1; ui.hintT = 0f; ui.nudgeAid = -1; ui.nudgeT = 0f
         // урок: новая механика появляется на своём уровне (карточка, тренировка, приз)
         lesson = Lessons.atLevel(current)?.takeIf { !progress.lessonDone(it.id) }
@@ -407,8 +411,11 @@ class GameView(context: Context) : View(context) {
                 if (id == BTN_NONE && screen == Screen.PLAY) {
                     val g = game
                     if (g != null) {
-                        val before = traysLeft(g)
-                        if (g.tap(x, y + LIFT)) { idle = 0f; ui.hintCol = -1; lessonTap(before - traysLeft(g)) }
+                        if (autoLeft > 0) autoStop()                 // нажатие игрока останавливает авторасклад
+                        else {
+                            val before = traysLeft(g)
+                            if (g.tap(x, y + LIFT)) { idle = 0f; ui.hintCol = -1; lessonTap(before - traysLeft(g)) }
+                        }
                     }
                 }
             }
@@ -454,7 +461,7 @@ class GameView(context: Context) : View(context) {
             BTN_UNDO -> if (g != null) useAid(AID_UNDO, g)
             BTN_CLEAR -> if (g != null) useAid(AID_CLEAR, g)
             BTN_SHUFFLE -> if (g != null) useAid(AID_SHUFFLE, g)
-            BTN_HINT -> if (g != null) useHint(g)
+            BTN_HINT -> if (g != null) useAuto(g)
             BTN_REVIVE -> if (g != null && g.state == State.LOST && progress.canRevive() && g.revive()) {
                 progress.spendRevive(); ui.endT = 0f; idle = 0f
             }
@@ -500,24 +507,41 @@ class GameView(context: Context) : View(context) {
     private fun nudge(aid: Int) { if (boosterOn(aid)) { ui.nudgeAid = aid; ui.nudgeT = 3f } }
 
     /**
-     * Умная подсказка: игра переводится в модель и ищется выигрышная последовательность от *текущего* положения.
-     * Платим только за ход, который реально показали; «подожди» и «тупик» бесплатны. Текста нет: ход показывает указатель на лотке,
-     * а в тупике кольцом подсвечивается помощник, который может помочь.
+     * Авторасклад: самый дорогой помощник. Игра переводится в модель (`Hints`), и дальше сама, ход за ходом, по лучшему порядку
+     * высыпает половину оставшихся лотков: перед каждым нажатием коротко показывает палец. Любое нажатие игрока останавливает его.
+     * Платим один раз и только если ход есть (в тупике бесплатно: подсвечивается помощник, который может помочь).
+     * За чистое прохождение звёзды с ним не получить (считается как два помощника).
      */
-    private fun useHint(g: Game) {
-        if (g.state != State.PLAY) return
+    private fun useAuto(g: Game) {
+        if (g.state != State.PLAY || autoLeft > 0) return
         val free = ui.freeAid == AID_HINT
         if (!free && !progress.canAfford(AID_HINT)) { openShop(); return }
-        val a = Hints.advise(g, 30_000)
-        when (a.kind) {
-            Advice.TAP, Advice.UNSURE -> {
-                if (free) lessonPassed() else { progress.spend(AID_HINT); hintsUsed++ }
-                idle = 0f
-                point(a.col)
-            }
-            Advice.STUCK -> nudge(if (g.canClear && boosterOn(AID_CLEAR)) AID_CLEAR else AID_UNDO)
-            else -> { ui.nudgeAid = AID_HINT; ui.nudgeT = 1.2f }      // шарики ещё едут: совет был бы неточным, ничего не списываем; кнопка коротко мигает кольцом
+        val left = traysLeft(g)
+        if (left == 0) return
+        if (Hints.advise(g, 30_000).kind == Advice.STUCK) { nudge(if (g.canClear && boosterOn(AID_CLEAR)) AID_CLEAR else AID_UNDO); return }
+        if (free) lessonPassed() else { progress.spend(AID_HINT); hintsUsed += 2 }
+        autoLeft = (left + 1) / 2; autoCol = -1; autoT = 0.2f; idle = 0f
+    }
+
+    private fun autoStop() { autoLeft = 0; autoCol = -1; autoT = 0f; ui.hintCol = -1 }
+
+    /** Один шаг авторасклада: ждём, пока шарики успокоятся, показываем палец, нажимаем. */
+    private fun autoTick(g: Game, dt: Float) {
+        if (g.state != State.PLAY || traysLeft(g) == 0) { autoStop(); return }
+        ui.nudgeAid = AID_HINT; ui.nudgeT = 0.25f                 // кольцо на кнопке, пока он работает
+        autoT -= dt
+        if (autoT > 0f || !Hints.calm(g)) return
+        if (autoCol < 0) {
+            val a = Hints.advise(g, 30_000)
+            if ((a.kind == Advice.TAP || a.kind == Advice.UNSURE) && a.col >= 0) { autoCol = a.col; point(a.col); autoT = 0.45f }
+            else if (a.kind == Advice.STUCK) autoStop()
+            else autoT = 0.2f                                     // шарики ещё едут: подождём
+            return
         }
+        val before = traysLeft(g)
+        if (g.tapColumn(autoCol)) autoLeft -= (before - traysLeft(g)).coerceAtLeast(1) else autoStop()
+        autoCol = -1; ui.hintCol = -1; autoT = 0.3f
+        if (autoLeft <= 0) autoStop()
     }
 
     // ---------- магазин, реклама, покупки ----------

@@ -6,7 +6,7 @@ import android.content.res.Configuration
 /** Прогресс новой версии. Отдельное хранилище намеренно начинает игру с нуля и не читает старые сохранения. */
 class Progress(context: Context) {
     companion object {
-        const val HINT_PRICE = 30
+        const val HINT_PRICE = 100      // авторасклад: самый дорогой помощник
         const val UNDO_PRICE = 20
         const val SHUFFLE_PRICE = 35
         const val CLEAR_PRICE = 40

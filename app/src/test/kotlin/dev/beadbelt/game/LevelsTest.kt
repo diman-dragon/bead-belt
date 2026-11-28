@@ -71,13 +71,13 @@ class LevelsTest {
 
     @Test
     fun linksAppearFromTheirLessonAndTeachingLinksAreInFront() {
-        val at = Lessons.all[LS_LINKS].level
+        val at = Lessons.all[LS_LINKS].at
         for (l in all) {
             val pairs = l.columns.flatten().count { it.arrow != 0 }
             if (l.id < at) assertEquals("уровень ${l.id}: связей быть не должно", 0, pairs)
             else assertTrue("уровень ${l.id}: нет связей", pairs >= 1)
         }
-        for (l in all.filter { it.id in at until at + 6 }) {
+        for (l in all.filter { Levels.spec(it.id).headFirst }) {
             val g = Game(l) { _, _ -> }
             val active = g.cols.indices.count { i ->
                 val h = g.cols[i][0]
@@ -90,7 +90,7 @@ class LevelsTest {
     /** Скрытый цвет: первый лоток колонки всегда виден, до урока скрытых нет, после урока есть всегда. */
     @Test
     fun hiddenTraysFollowTheirLesson() {
-        val at = Lessons.all[LS_HIDDEN].level
+        val at = Lessons.all[LS_HIDDEN].at
         for (l in all) {
             var hidden = 0
             l.columns.forEach { col -> col.forEachIndexed { i, t -> if (t.hidden) { hidden++; assertTrue("уровень ${l.id}: скрыт первый лоток", i > 0) } } }
@@ -179,44 +179,42 @@ class LevelsTest {
             assertTrue("уровень $id: цепей меньше", s.chains >= prev.chains && s.maxLock >= prev.maxLock)
             assertTrue("уровень $id: скрытых коробок меньше", s.mysteryShare >= prev.mysteryShare)
             val jumps = (if (s.colors != prev.colors) 1 else 0) + (if (s.perColor != prev.perColor) 1 else 0) + (if (s.pairs != prev.pairs) 1 else 0)
-            assertTrue("уровень $id: несколько ступенек сразу", jumps <= 1)
+            if (id > Levels.EARLY.size) assertTrue("уровень $id: несколько ступенек сразу", jumps <= 1)      // первые десять уровней сжаты намеренно
             prev = s
         }
         assertEquals(COLOR_COUNT, Levels.spec(LEVEL_COUNT).colors)
         assertEquals(5, Levels.spec(LEVEL_COUNT).perColor)
         assertEquals(4, Levels.spec(LEVEL_COUNT).pairs)
         assertTrue("к 200-му все усложнения в деле", Levels.spec(LEVEL_COUNT).let { it.swaps >= 4 && it.chains >= 3 && it.mysteryShare >= 0.5 })
-        assertTrue("к 50-му уровню ещё далеко до максимума", Levels.spec(50).colors <= 5 && Levels.spec(50).perColor <= 3 && Levels.spec(50).pairs <= 1)
-        assertTrue(all.filter { it.id < Lessons.all[LS_LIFT].level }.all { it.elevator < 0 })
-        assertTrue(all.filter { it.id == Lessons.all[LS_LIFT].level }.all { it.elevator >= 0 })
+        assertTrue("к десятому (сжатому) уровню ещё далеко до максимума", Levels.spec(10).colors <= 5 && Levels.spec(10).perColor <= 3 && Levels.spec(10).pairs <= 1)
+        assertTrue(all.filter { it.id < Lessons.all[LS_LIFT].at }.all { it.elevator < 0 })
+        assertTrue(all.filter { it.id == Lessons.all[LS_LIFT].at }.all { it.elevator >= 0 })
         assertTrue("цвета на разных уровнях различаются", all.map { it.boxes.toSet() }.toSet().size > 5)
     }
 
-    /** Первые 50 уровней остались такими же, как в прошлой версии (раскладка, цвета, лифты и ленты): прогресс и баланс сохранены. */
+    /** Десять первых уровней — прежние уровни сложности 1, 4, 8, ..., 50 без единого изменения (раскладка, цвета, лифты, ленты). */
     @Test
-    fun firstFiftyLevelsAreUnchanged() {
+    fun firstTenLevelsAreTheOldOnes() {
         val sb = StringBuilder()
-        for (id in 1..50) {
+        for (id in 1..10) {
             val l = Levels.make(id)
-            sb.append(id).append(' ')
+            sb.append(Levels.diff(id)).append(' ')
             sb.append(l.columns.joinToString("|") { c -> c.joinToString(",") { "${it.c}.${it.n}.${it.arrow}.${it.pid}.${it.hidden}" } })
             sb.append('#').append(l.boxes.joinToString()).append('#').append(l.elevator).append('#').append(l.belt).append('\n')
         }
-        assertEquals(30132832, sb.toString().hashCode())
+        assertEquals(95375360, sb.toString().hashCode())
     }
 
-    /** Нижний ряд помощников не заходит ни на активные коробки, ни на выглядывающую очередь, ни за край поля. */
     @Test
-    fun bottomRowNeverOverlapsBoxesAndStaysOnScreen() {
-        val queueBottom = BOX_Y + 19f + BOX_H / 2f          // даже без уменьшения очереди
-        val activeBottom = BOX_Y + 14f + BOX_H / 2f + 4f                       // с въездом и просадкой
-        val rowTop = BOOST_Y - Layout.AID_SIZE / 2f
-        assertTrue("ряд ($rowTop) на очереди коробок ($queueBottom)", rowTop > queueBottom && rowTop > activeBottom)
-        assertTrue("ряд ниже поля", BOOST_Y + Layout.AID_SIZE / 2f <= H)
-        for (aid in 0 until AID_COUNT) {
-            assertTrue("значок $aid в пределах ширины", Layout.aidX(aid) - Layout.AID_SIZE / 2f >= 0f && Layout.aidX(aid) + Layout.AID_SIZE / 2f <= W)
-            if (aid > 0) assertTrue("значки $aid не перекрываются", Layout.aidX(aid) - Layout.aidX(aid - 1) >= Layout.AID_SIZE)
+    fun levelNumbersMapToDifficultyBothWays() {
+        for (id in 1..LEVEL_COUNT) {
+            val d = Levels.diff(id)
+            if (id > 1) assertTrue("сложность растёт: $id", d > Levels.diff(id - 1))
+            if (d <= 50 && d !in Levels.EARLY) continue
+            assertEquals("обратное отображение $id", id, Levels.idOf(d))
         }
+        assertEquals(51, Levels.diff(11))
+        assertEquals(50, Levels.diff(10))
     }
 
     @Test

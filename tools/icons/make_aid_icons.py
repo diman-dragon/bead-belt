@@ -56,7 +56,7 @@ def glyph_on(tile_im, glyph_path, scale=0.62, dy=-4):
     out.alpha_composite(g,((256-g.width)//2,(256-g.height)//2+dy))
     return out
 
-hint  = glyph_on(tile((255,236,150),(255,170,40)), 'red_question_mark.png', 0.64)          # золотая плитка, красный «?»
+hint  = glyph_on(tile((255,236,150),(255,170,40)), 'magic_wand.png', 0.78)             # золотая плитка, волшебная палочка (авторасклад)
 undo  = hueshift(Image.open('right_arrow_curving_left.png'), 0)                         # синий → оранжево-красный
 shuf  = hueshift(Image.open('shuffle_tracks_button.png'), 70)                                # синий → фиолетовый
 clear = glyph_on(tile((140,240,170),(30,170,90)), 'broom.png', 0.74, dy=-2)                  # зелёная плитка, метла
