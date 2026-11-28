@@ -1,6 +1,10 @@
 package dev.beadbelt.game
 
+import android.content.res.AssetManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
@@ -23,7 +27,7 @@ class NumText {
 }
 
 /** Рисовалка примитивов (текст, кнопки, значки, фон). Все кисти, шейдеры и пути переиспользуются. */
-class Painter(val a: Assets, val sw: Float, val sh: Float) {
+class Painter(val a: Assets, val sw: Float, val sh: Float, am: AssetManager? = null) {
     val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bp = Paint(Paint.FILTER_BITMAP_FLAG)
     val rect = RectF()
@@ -307,23 +311,12 @@ class Painter(val a: Assets, val sw: Float, val sh: Float) {
         path.reset(); path.moveTo(10f, 3f); path.quadTo(10f, 6f, 13f, 6f); path.quadTo(10f, 6f, 10f, 9f); path.quadTo(10f, 6f, 7f, 6f); path.quadTo(10f, 6f, 10f, 3f); cv.drawPath(path, p)
     }
 
-    /** Подсказка: палец нажимает, от кончика расходятся волны («нажми сюда»). Центр в (0,0). */
+    /** Запасной значок подсказки на случай, если картинка не загрузилась: золотой круг с вопросом. Центр в (0,0). */
     private fun vecHint(cv: Canvas) {
-        p.shader = null; p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND
-        p.style = Paint.Style.STROKE; p.strokeWidth = 2.2f; p.color = 0xFFFFD84A.toInt()          // волны от кончика
-        rect.set(-4.5f, -13.5f, 4.5f, -4.5f); cv.drawArc(rect, 215f, 110f, false, p)
-        rect.set(-9f, -18f, 9f, 0f); cv.drawArc(rect, 220f, 100f, false, p)
-        val skin = 0xFFFFE2BC.toInt(); val line = 0xFF9A6A2E.toInt()
-        for (pass in 0..1) {                                                                     // сначала обводка, потом заливка
-            p.style = if (pass == 0) Paint.Style.FILL_AND_STROKE else Paint.Style.FILL
-            p.strokeWidth = if (pass == 0) 3.2f else 0f; p.color = if (pass == 0) line else skin
-            rect.set(-3f, -7f, 3f, 5f); cv.drawRoundRect(rect, 3f, 3f, p)                      // указательный палец
-            rect.set(-9f, 1f, 9f, 15f); cv.drawRoundRect(rect, 5.5f, 5.5f, p)                  // ладонь
-            rect.set(-12.5f, 4f, -6f, 11f); cv.drawRoundRect(rect, 3.2f, 3.2f, p)              // большой палец
-        }
-        p.style = Paint.Style.STROKE; p.strokeWidth = 1.2f; p.color = line                       // пальцы, прижатые к ладони
-        cv.drawLine(-3f, 6.5f, -3f, 11f, p); cv.drawLine(3f, 6.5f, 3f, 11f, p)
-        p.strokeCap = Paint.Cap.BUTT
+        p.shader = null; p.style = Paint.Style.FILL; p.color = 0xFFFFC21F.toInt(); cv.drawCircle(0f, 0f, 14f, p)
+        p.color = Theme.alpha(Theme.WHITE, 90); cv.drawCircle(-3f, -5f, 7f, p)
+        p.color = 0xFFE5334B.toInt(); p.textAlign = Paint.Align.CENTER; p.typeface = Theme.fontBlack; p.textSize = 22f
+        cv.drawText("?", 0f, 8f, p)
     }
 
     /** Подарочная коробка, центр в (0,0). */
@@ -408,7 +401,7 @@ class Painter(val a: Assets, val sw: Float, val sh: Float) {
     private val icUndo = bake(15f, 15f) { vecUndo(it) }
     private val icShuffle = bake(16f, 14f) { vecShuffle(it) }
     private val icClear = bake(15f, 16f) { vecClear(it) }
-    private val icHint = bake(15f, 18f) { vecHint(it) }
+    private val icHint = bake(15f, 15f) { vecHint(it) }
     private val icGift = bake(16f, 17f) { vecGift(it) }
     private val icLock = bake(16f, 24f) { vecLock(it, 0f, 0f, 1f) }
     private val icCheck = bake(12f, 10f) { vecCheck(it, 0f, 0f, 1f, Theme.WHITE) }
@@ -448,6 +441,33 @@ class Painter(val a: Assets, val sw: Float, val sh: Float) {
     fun shuffle(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icShuffle, x, y, sc)
     fun clear(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icClear, x, y, sc)
     fun hint(cv: Canvas, x: Float, y: Float, sc: Float = 1f, alpha: Int = 255) = put(cv, icHint, x, y, sc, alpha)
+
+    // ---------- цветные значки помощников (PNG из assets: Fluent Emoji 3D, MIT, см. docs/ASSETS_LICENSE.md) ----------
+
+    private val aidFiles = arrayOf("aid_hint.png", "aid_undo.png", "aid_shuffle.png", "aid_clear.png")
+    private val aidBmp: Array<Bitmap?> = Array(aidFiles.size) { i ->
+        try {
+            am?.open(aidFiles[i])?.use { st ->
+                val src = BitmapFactory.decodeStream(st)
+                val px = ceil(Layout.AID_SIZE * a.k).toInt()          // запекаем сразу в нужный размер: в кадре только drawBitmap
+                if (src != null && src.width != px) Bitmap.createScaledBitmap(src, px, px, true).also { if (it !== src) src.recycle() } else src
+            }
+        } catch (e: Exception) { null }
+    }
+    private val aidDim = Paint(Paint.FILTER_BITMAP_FLAG).also { it.colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0.08f) }) }
+
+    /** Значок помощника `aid` размером `size` (логических) по центру (x, y); неактивный выцветает. */
+    fun aid(cv: Canvas, aid: Int, x: Float, y: Float, size: Float, enabled: Boolean = true) {
+        val bmp = aidBmp.getOrNull(aid)
+        if (bmp == null) {                                         // запасные векторные значки
+            val sc = size / 32f
+            when (aid) { AID_UNDO -> undo(cv, x, y, sc); AID_SHUFFLE -> shuffle(cv, x, y, sc); AID_CLEAR -> clear(cv, x, y, sc); else -> hint(cv, x, y, sc) }
+            return
+        }
+        rect.set(x - size / 2f, y - size / 2f, x + size / 2f, y + size / 2f)
+        if (enabled) { bp.alpha = 255; cv.drawBitmap(bmp, null, rect, bp) }
+        else { aidDim.alpha = 150; cv.drawBitmap(bmp, null, rect, aidDim) }
+    }
     fun gift(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icGift, x, y, sc)
     fun lock(cv: Canvas, x: Float, y: Float, sc: Float = 1f) = put(cv, icLock, x, y, sc)
     fun check(cv: Canvas, x: Float, y: Float, sc: Float, color: Int) = put(cv, icCheck, x, y, sc, color ushr 24)

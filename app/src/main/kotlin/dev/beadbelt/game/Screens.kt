@@ -548,10 +548,10 @@ class Screens(private val g: Painter, private val progress: Progress, private va
     private fun shopIcon(cv: Canvas, icon: Int, x: Float, y: Float) {
         when (icon) {
             ICON_COIN -> g.coin(cv, x, y, 15f)
-            ICON_HINT -> g.hint(cv, x, y, 1.15f)
-            ICON_UNDO -> g.undo(cv, x, y, 1.2f)
-            ICON_SHUFFLE -> g.shuffle(cv, x, y, 1.2f)
-            ICON_CLEAR -> g.clear(cv, x, y, 1.2f)
+            ICON_HINT -> g.aid(cv, AID_HINT, x, y, 40f)
+            ICON_UNDO -> g.aid(cv, AID_UNDO, x, y, 40f)
+            ICON_SHUFFLE -> g.aid(cv, AID_SHUFFLE, x, y, 40f)
+            ICON_CLEAR -> g.aid(cv, AID_CLEAR, x, y, 40f)
             ICON_GIFT -> g.gift(cv, x, y, 1.25f)
             else -> {          // «без рекламы»: перечёркнутый AD
                 g.text(cv, "AD", x, y + 6f, 17f, Theme.WHITE, shadow = false)

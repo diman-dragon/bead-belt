@@ -8,7 +8,8 @@ import kotlin.math.sin
 const val W = 360f
 const val H = 640f
 const val TRAY_Y = 186f
-const val BOX_Y = 528f
+/** Коробки подняты, чтобы под очередью (она свисает до y≈569) оставалось место для нижнего ряда помощников. */
+const val BOX_Y = 508f
 const val BOX_W = 78f
 const val BOX_H = 92f
 const val BODY_R = 8.5f      // радиус шарика в воронке
@@ -19,7 +20,7 @@ const val BODY_R = 8.5f      // радиус шарика в воронке
 const val LIFT = 34f
 
 // нижний ряд помощников
-const val BOOST_Y = 612f
+const val BOOST_Y = 606f
 
 const val EV_TAP = 0
 const val EV_PICK = 1

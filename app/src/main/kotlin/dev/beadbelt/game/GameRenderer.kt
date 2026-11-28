@@ -389,34 +389,30 @@ class GameRenderer(private val g: Painter, private val a: Assets, private val pr
     private fun aidButton(cv: Canvas, x: Float, aid: Int, game: Game, ui: Ui) {
         val free = ui.freeAid == aid                        // на учебном уровне помощник бесплатный
         if (!free && !progress.lessonDone(Lessons.forAid(aid).id)) {      // ещё не открыт: тусклая кнопка с замком
-            g.roundButton(cv, x, BOOST_Y, Layout.BOOST_R, 0f, false)
-            g.lock(cv, x, BOOST_Y, 0.7f)
+            g.aid(cv, aid, x, BOOST_Y, Layout.AID_SIZE, false)           // тот же значок, выцветший, с замком поверх
+            g.lock(cv, x, BOOST_Y, 0.85f)
             return
         }
         // кнопка неактивна, только когда помощник сейчас бесполезен; не хватает монет — нажатие откроет магазин
         val applicable = when (aid) { AID_UNDO -> game.canUndo; AID_CLEAR -> game.canClear; AID_SHUFFLE -> game.canShuffle; else -> true }
         val usable = game.state == State.PLAY && applicable
-        g.roundButton(cv, x, BOOST_Y, Layout.BOOST_R, ui.pr(aidButtonId(aid)), usable)
-        when (aid) {
-            AID_UNDO -> g.undo(cv, x, BOOST_Y)
-            AID_SHUFFLE -> g.shuffle(cv, x, BOOST_Y)
-            AID_CLEAR -> g.clear(cv, x, BOOST_Y)
-            else -> g.hint(cv, x, BOOST_Y - 1f)
-        }
-        if (!usable) { g.p.style = Paint.Style.FILL; g.p.shader = null; g.p.color = Theme.alpha(0xFF0A1535.toInt(), 120); cv.drawCircle(x, BOOST_Y, Layout.BOOST_R, g.p) }
+        // цветной значок на всю высоту ряда: без подложки, нажатие слегка уменьшает; неактивный выцветает
+        g.aid(cv, aid, x, BOOST_Y, Layout.AID_SIZE * (1f - 0.1f * ui.pr(aidButtonId(aid))), usable)
         val ring = (ui.focusAid == aid && game.state == State.PLAY) || (ui.nudgeAid == aid && ui.nudgeT > 0f)
         if (ring) {                                        // урок или игра указывает на эту кнопку
             val pulse = 0.5f + 0.5f * sin(ui.clock * 6f)
             g.p.style = Paint.Style.STROKE; g.p.shader = null; g.p.strokeWidth = 4f
             g.p.color = Theme.alpha(Theme.pointer, (150 + 105 * pulse).toInt())
-            cv.drawCircle(x, BOOST_Y, Layout.BOOST_R + 5f + 3f * pulse, g.p)
+            g.rect.set(x - Layout.AID_SIZE / 2f - 3f - 2f * pulse, BOOST_Y - Layout.AID_SIZE / 2f - 3f - 2f * pulse, x + Layout.AID_SIZE / 2f + 3f + 2f * pulse, BOOST_Y + Layout.AID_SIZE / 2f + 3f + 2f * pulse)
+            cv.drawRoundRect(g.rect, 20f, 20f, g.p)
         }
         val have = if (free) 1 else progress.have(aid)
         val label = if (have > 0) aidCount[aid].of(have) else aidPrice[aid].of(Progress.price(aid))
         g.p.style = Paint.Style.FILL; g.p.shader = null
-        g.p.color = Theme.INK; cv.drawCircle(x + 19f, BOOST_Y - 19f, 12.5f, g.p)
-        g.p.color = if (have > 0) Theme.GREEN else Theme.GOLD; cv.drawCircle(x + 19f, BOOST_Y - 19f, 11f, g.p)
-        g.text(cv, label, x + 19f, BOOST_Y - 15f, if (label.length > 1) 10f else 12.5f, Theme.INK, shadow = false)
+        val bx = x + Layout.AID_SIZE / 2f - 11f; val by = BOOST_Y + Layout.AID_SIZE / 2f - 13f     // значок количества в нижнем углу: вверх не выступает
+        g.p.color = Theme.INK; cv.drawCircle(bx, by, 12.5f, g.p)
+        g.p.color = if (have > 0) Theme.GREEN else Theme.GOLD; cv.drawCircle(bx, by, 11f, g.p)
+        g.text(cv, label, bx, by + 4f, if (label.length > 1) 10f else 12.5f, Theme.INK, shadow = false)
     }
 
     private fun aidButtonId(aid: Int) = when (aid) { AID_UNDO -> BTN_UNDO; AID_SHUFFLE -> BTN_SHUFFLE; AID_CLEAR -> BTN_CLEAR; else -> BTN_HINT }

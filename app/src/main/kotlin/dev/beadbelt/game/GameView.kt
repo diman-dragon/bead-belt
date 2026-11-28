@@ -15,7 +15,7 @@ import kotlin.math.min
 
 private const val BTN_BLOCK = -1     // нажатие поглощено (диалог, пауза), но действия нет
 private const val SPLASH_LEN = 3.1f     // сколько секунд длится заставка
-private const val VERSION_FALLBACK = "0.9.3"
+private const val VERSION_FALLBACK = "0.10.1"
 
 /**
  * Вид игры: цикл кадров, ввод и переходы между экранами.
@@ -101,7 +101,7 @@ class GameView(context: Context) : View(context) {
         ox = (viewW - W * s) / 2f
         oy = (viewH - H * s) / 2f
         val assets = Assets(s)
-        val p = Painter(assets, viewW.toFloat(), viewH.toFloat())
+        val p = Painter(assets, viewW.toFloat(), viewH.toFloat(), context.assets)
         painter = p
         renderer = GameRenderer(p, assets, progress)
         screens = Screens(p, progress, version)

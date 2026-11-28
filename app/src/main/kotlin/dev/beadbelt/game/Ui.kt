@@ -72,9 +72,11 @@ object Layout {
     val PLAY_COIN = floatArrayOf(124f, 39f, 236f, 75f)
 
     // нижний ряд: четыре помощника (подсказка, отменить, перемешать, очистить ленту)
-    const val BOOST_R = 26f
-    const val AID_X0 = 54f
-    const val AID_DX = 84f
+    /** Значок помощника 64×64: верх ряда y = 574, под очередью коробок (она кончается на 569). */
+    const val AID_SIZE = 64f
+    const val BOOST_R = 33f
+    const val AID_X0 = 44f
+    const val AID_DX = 90.67f
     fun aidX(aid: Int) = AID_X0 + AID_DX * aid
 
     // магазин: список строк (первая — видео за монеты, дальше товары)

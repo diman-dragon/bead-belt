@@ -205,6 +205,20 @@ class LevelsTest {
         assertEquals(30132832, sb.toString().hashCode())
     }
 
+    /** Нижний ряд помощников не заходит ни на активные коробки, ни на выглядывающую очередь, ни за край поля. */
+    @Test
+    fun bottomRowNeverOverlapsBoxesAndStaysOnScreen() {
+        val queueBottom = BOX_Y + 19f + BOX_H / 2f          // даже без уменьшения очереди
+        val activeBottom = BOX_Y + 14f + BOX_H / 2f + 4f                       // с въездом и просадкой
+        val rowTop = BOOST_Y - Layout.AID_SIZE / 2f
+        assertTrue("ряд ($rowTop) на очереди коробок ($queueBottom)", rowTop > queueBottom && rowTop > activeBottom)
+        assertTrue("ряд ниже поля", BOOST_Y + Layout.AID_SIZE / 2f <= H)
+        for (aid in 0 until AID_COUNT) {
+            assertTrue("значок $aid в пределах ширины", Layout.aidX(aid) - Layout.AID_SIZE / 2f >= 0f && Layout.aidX(aid) + Layout.AID_SIZE / 2f <= W)
+            if (aid > 0) assertTrue("значки $aid не перекрываются", Layout.aidX(aid) - Layout.aidX(aid - 1) >= Layout.AID_SIZE)
+        }
+    }
+
     @Test
     fun hopperPhysicsKeepsMarblesInside() {
         val game = Game(all[9]) { _, _ -> }
